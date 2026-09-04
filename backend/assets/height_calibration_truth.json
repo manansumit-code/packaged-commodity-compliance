@@ -1,0 +1,54 @@
+{
+  "dpi": 600,
+  "marker_nominal_mm": 40.0,
+  "rows_top_to_bottom": [
+    {
+      "target_mm": 1.0,
+      "true_height_mm": 1.016,
+      "font": "Arial.ttf",
+      "digits": "0123456789"
+    },
+    {
+      "target_mm": 1.5,
+      "true_height_mm": 1.48167,
+      "font": "Arial.ttf",
+      "digits": "0123456789"
+    },
+    {
+      "target_mm": 2.0,
+      "true_height_mm": 1.98967,
+      "font": "Arial.ttf",
+      "digits": "0123456789"
+    },
+    {
+      "target_mm": 2.5,
+      "true_height_mm": 2.49767,
+      "font": "Arial.ttf",
+      "digits": "0123456789"
+    },
+    {
+      "target_mm": 3.0,
+      "true_height_mm": 3.00567,
+      "font": "Arial.ttf",
+      "digits": "0123456789"
+    },
+    {
+      "target_mm": 4.0,
+      "true_height_mm": 3.97933,
+      "font": "Arial.ttf",
+      "digits": "0123456789"
+    },
+    {
+      "target_mm": 5.0,
+      "true_height_mm": 4.99533,
+      "font": "Arial.ttf",
+      "digits": "0123456789"
+    },
+    {
+      "target_mm": 6.0,
+      "true_height_mm": 6.01133,
+      "font": "Arial.ttf",
+      "digits": "0123456789"
+    }
+  ]
+}

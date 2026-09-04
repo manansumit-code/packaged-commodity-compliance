@@ -1,0 +1,17 @@
+# Normalise line endings on text so Windows and macOS/Linux teammates do not
+# produce whole-file diffs against each other.
+* text=auto
+
+# Never line-ending-convert these. Git usually detects binary on its own, but
+# being explicit means a mis-detection cannot silently corrupt a calibration
+# asset — and a corrupted marker PDF fails in a way that looks like a bug in
+# the measurement code.
+*.png   binary
+*.jpg   binary
+*.jpeg  binary
+*.pdf   binary
+*.db    binary
+
+# Regenerated (not byte-identical) by verify.py and demo_cases.py — collapse
+# the noise in diffs and PRs.
+backend/data/demo/*.jpg binary -diff

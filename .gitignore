@@ -1,0 +1,30 @@
+# Virtual environment — never commit this. It contains absolute paths from the
+# machine that created it, so a committed venv is broken for everyone else.
+.venv/
+venv/
+env/
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+
+# Per-user scan state, written at runtime by db.py and api.py.
+# Both directories are recreated automatically, so they are safe to ignore.
+backend/data/scans.db
+backend/data/images/
+
+# Internal planning docs — deliberately not published while the competition is
+# open. Share these with teammates directly, not through this repo.
+SIH26034_Complete_Plan_1.docx
+*.docx
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Editors
+.vscode/
+.idea/
+*.swp

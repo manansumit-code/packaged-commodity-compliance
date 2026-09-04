@@ -1,0 +1,146 @@
+{
+  "bias_mm": 0.00877,
+  "sigma_mm": 0.03692,
+  "k": 4.0,
+  "band_override_mm": 0.15645,
+  "min_px_per_mm": 6.0,
+  "max_tilt_deg": 35.0,
+  "max_baseline_slope_deg": 0.63,
+  "max_baseline_spread_deg": 5.212,
+  "apply_bias_correction": false,
+  "source": "fitted on 431 numeral measurements at or above 6 px/mm, from 220 degraded SYNTHETIC captures, 2026-09-04. Fitted on the population the pipeline actually adjudicates (correctly classified, glyph count agreeing with OCR, above the resolution floor); misclassification is reported separately rather than absorbed into this band. k=4 - see eval/band_sweep.py for why 2 is not enough. NOT a physical calibration: run 'cli.py calibrate-physical' on photographs of the printed known-height sheet before enforcement use.",
+  "gate_derivation": {
+    "floor": 6.0,
+    "sweep": {
+      "6.0": {
+        "n": 431,
+        "bias_mm": 0.0088,
+        "sigma_mm": 0.0369,
+        "mae_mm": 0.0235,
+        "p95_abs_mm": 0.0815,
+        "p99_abs_mm": 0.128
+      },
+      "8.0": {
+        "n": 414,
+        "bias_mm": 0.0076,
+        "sigma_mm": 0.0359,
+        "mae_mm": 0.0225,
+        "p95_abs_mm": 0.081,
+        "p99_abs_mm": 0.1277
+      },
+      "10.0": {
+        "n": 366,
+        "bias_mm": 0.0052,
+        "sigma_mm": 0.0306,
+        "mae_mm": 0.0185,
+        "p95_abs_mm": 0.0697,
+        "p99_abs_mm": 0.1234
+      },
+      "12.0": {
+        "n": 321,
+        "bias_mm": 0.0026,
+        "sigma_mm": 0.0255,
+        "mae_mm": 0.0148,
+        "p95_abs_mm": 0.049,
+        "p99_abs_mm": 0.1026
+      },
+      "14.0": {
+        "n": 274,
+        "bias_mm": 0.001,
+        "sigma_mm": 0.024,
+        "mae_mm": 0.0131,
+        "p95_abs_mm": 0.0439,
+        "p99_abs_mm": 0.0931
+      },
+      "16.0": {
+        "n": 231,
+        "bias_mm": 0.0011,
+        "sigma_mm": 0.0202,
+        "mae_mm": 0.0106,
+        "p95_abs_mm": 0.037,
+        "p99_abs_mm": 0.0692
+      },
+      "18.0": {
+        "n": 179,
+        "bias_mm": 0.0003,
+        "sigma_mm": 0.0183,
+        "mae_mm": 0.0078,
+        "p95_abs_mm": 0.0222,
+        "p99_abs_mm": 0.0739
+      }
+    },
+    "bias_mm": 0.00877,
+    "sigma_mm": 0.03692,
+    "p95_abs_mm": 0.0815,
+    "p99_abs_mm": 0.128,
+    "band_mm": 0.15645,
+    "n": 431
+  },
+  "coplanarity_null": {
+    "n": 211,
+    "abs_median_slope_deg": {
+      "p50": 0.025,
+      "p95": 0.129,
+      "p99": 0.4197,
+      "max": 0.591
+    },
+    "slope_spread_deg": {
+      "p50": 0.335,
+      "p95": 2.0185,
+      "p99": 3.4745,
+      "max": 5.599
+    }
+  },
+  "calibration_stats_all_resolutions": {
+    "n": 373,
+    "yield_given_found": 0.9395,
+    "yield_end_to_end": 0.7936,
+    "n_printed": 470,
+    "n_found": 397,
+    "bias_mm": 0.0125,
+    "sigma_mm": 0.2117,
+    "mae_mm": 0.0636,
+    "p95_abs_mm": 0.1614,
+    "max_abs_mm": 3.07,
+    "mean_rel_pct": 1.145,
+    "mae_rel_pct": 3.346
+  },
+  "by_resolution": {
+    "<6": {
+      "n": 6,
+      "bias_mm": 0.1838,
+      "sigma_mm": 0.0793,
+      "mae_mm": 0.1838
+    },
+    "6-9": {
+      "n": 61,
+      "bias_mm": -0.0006,
+      "sigma_mm": 0.1507,
+      "mae_mm": 0.0784
+    },
+    "9-12": {
+      "n": 104,
+      "bias_mm": 0.0194,
+      "sigma_mm": 0.0956,
+      "mae_mm": 0.061
+    },
+    "12-16": {
+      "n": 98,
+      "bias_mm": 0.0164,
+      "sigma_mm": 0.093,
+      "mae_mm": 0.0346
+    },
+    "16-22": {
+      "n": 153,
+      "bias_mm": 0.0002,
+      "sigma_mm": 0.0262,
+      "mae_mm": 0.0152
+    },
+    ">=22": {
+      "n": 91,
+      "bias_mm": -0.0127,
+      "sigma_mm": 0.1087,
+      "mae_mm": 0.024
+    }
+  }
+}

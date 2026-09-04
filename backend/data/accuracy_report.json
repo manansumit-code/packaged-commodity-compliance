@@ -1,0 +1,735 @@
+{
+  "generated": "2026-09-04T10:47:31",
+  "0_population_this_measures": {
+    "what_these_numbers_describe": "Synthetic labels rendered by eval/synth.py and passed through a simulated imaging chain. They measure the ARCHITECTURE, not performance on real retail packaging.",
+    "label_population": [
+      "flat black-on-white printed panels, 8 macOS system fonts",
+      "no background graphics, no colour, no reversed (white-on-dark) text",
+      "no halftoning, no dot gain, no paper show-through, no gloss",
+      "English / Latin script only",
+      "one net quantity, one MRP, one manufacture date per pack, plus best-before, expiry, batch and promotional-price distractors"
+    ],
+    "imaging_chain_modelled": [
+      "ink gain (morphological erode/dilate)",
+      "3-D perspective / tilt",
+      "area-averaged downsampling to 5-26 px/mm",
+      "Gaussian defocus",
+      "non-uniform illumination + specular highlight",
+      "additive sensor noise",
+      "JPEG at q55-97"
+    ],
+    "imaging_chain_NOT_modelled": [
+      "lens distortion",
+      "rolling shutter",
+      "motion blur",
+      "real halftone screens and print registration error",
+      "glossy / metallised substrates",
+      "chromatic aberration"
+    ],
+    "expected_on_real_packaging": "Field-extraction recall will be materially lower and the height sigma several times larger. The build plan's own line is that the hours go into tuning OCR against real product photos. Fit the band with 'cli.py calibrate-physical' before trusting any threshold.",
+    "ground_truth_method": "Numeral height comes from the FreeType outline metrics of the clean master render, which the pipeline never sees. Validated against a 400 px raster on four fonts: agreement to 0 px."
+  },
+  "n_validation_images": 340,
+  "uncertainty_used": {
+    "bias_mm": 0.00877,
+    "sigma_mm": 0.03692,
+    "k": 4.0,
+    "band_override_mm": 0.15645,
+    "min_px_per_mm": 6.0,
+    "max_tilt_deg": 35.0,
+    "max_baseline_slope_deg": 0.63,
+    "max_baseline_spread_deg": 5.212,
+    "apply_bias_correction": false,
+    "source": "fitted on 431 numeral measurements at or above 6 px/mm, from 220 degraded SYNTHETIC captures, 2026-09-04. Fitted on the population the pipeline actually adjudicates (correctly classified, glyph count agreeing with OCR, above the resolution floor); misclassification is reported separately rather than absorbed into this band. k=4 - see eval/band_sweep.py for why 2 is not enough. NOT a physical calibration: run 'cli.py calibrate-physical' on photographs of the printed known-height sheet before enforcement use.",
+    "gate_derivation": {
+      "floor": 6.0,
+      "sweep": {
+        "6.0": {
+          "n": 431,
+          "bias_mm": 0.0088,
+          "sigma_mm": 0.0369,
+          "mae_mm": 0.0235,
+          "p95_abs_mm": 0.0815,
+          "p99_abs_mm": 0.128
+        },
+        "8.0": {
+          "n": 414,
+          "bias_mm": 0.0076,
+          "sigma_mm": 0.0359,
+          "mae_mm": 0.0225,
+          "p95_abs_mm": 0.081,
+          "p99_abs_mm": 0.1277
+        },
+        "10.0": {
+          "n": 366,
+          "bias_mm": 0.0052,
+          "sigma_mm": 0.0306,
+          "mae_mm": 0.0185,
+          "p95_abs_mm": 0.0697,
+          "p99_abs_mm": 0.1234
+        },
+        "12.0": {
+          "n": 321,
+          "bias_mm": 0.0026,
+          "sigma_mm": 0.0255,
+          "mae_mm": 0.0148,
+          "p95_abs_mm": 0.049,
+          "p99_abs_mm": 0.1026
+        },
+        "14.0": {
+          "n": 274,
+          "bias_mm": 0.001,
+          "sigma_mm": 0.024,
+          "mae_mm": 0.0131,
+          "p95_abs_mm": 0.0439,
+          "p99_abs_mm": 0.0931
+        },
+        "16.0": {
+          "n": 231,
+          "bias_mm": 0.0011,
+          "sigma_mm": 0.0202,
+          "mae_mm": 0.0106,
+          "p95_abs_mm": 0.037,
+          "p99_abs_mm": 0.0692
+        },
+        "18.0": {
+          "n": 179,
+          "bias_mm": 0.0003,
+          "sigma_mm": 0.0183,
+          "mae_mm": 0.0078,
+          "p95_abs_mm": 0.0222,
+          "p99_abs_mm": 0.0739
+        }
+      },
+      "bias_mm": 0.00877,
+      "sigma_mm": 0.03692,
+      "p95_abs_mm": 0.0815,
+      "p99_abs_mm": 0.128,
+      "band_mm": 0.15645,
+      "n": 431
+    },
+    "coplanarity_null": {
+      "n": 211,
+      "abs_median_slope_deg": {
+        "p50": 0.025,
+        "p95": 0.129,
+        "p99": 0.4197,
+        "max": 0.591
+      },
+      "slope_spread_deg": {
+        "p50": 0.335,
+        "p95": 2.0185,
+        "p99": 3.4745,
+        "max": 5.599
+      }
+    },
+    "calibration_stats_all_resolutions": {
+      "n": 373,
+      "yield_given_found": 0.9395,
+      "yield_end_to_end": 0.7936,
+      "n_printed": 470,
+      "n_found": 397,
+      "bias_mm": 0.0125,
+      "sigma_mm": 0.2117,
+      "mae_mm": 0.0636,
+      "p95_abs_mm": 0.1614,
+      "max_abs_mm": 3.07,
+      "mean_rel_pct": 1.145,
+      "mae_rel_pct": 3.346
+    },
+    "by_resolution": {
+      "<6": {
+        "n": 6,
+        "bias_mm": 0.1838,
+        "sigma_mm": 0.0793,
+        "mae_mm": 0.1838
+      },
+      "6-9": {
+        "n": 61,
+        "bias_mm": -0.0006,
+        "sigma_mm": 0.1507,
+        "mae_mm": 0.0784
+      },
+      "9-12": {
+        "n": 104,
+        "bias_mm": 0.0194,
+        "sigma_mm": 0.0956,
+        "mae_mm": 0.061
+      },
+      "12-16": {
+        "n": 98,
+        "bias_mm": 0.0164,
+        "sigma_mm": 0.093,
+        "mae_mm": 0.0346
+      },
+      "16-22": {
+        "n": 153,
+        "bias_mm": 0.0002,
+        "sigma_mm": 0.0262,
+        "mae_mm": 0.0152
+      },
+      ">=22": {
+        "n": 91,
+        "bias_mm": -0.0127,
+        "sigma_mm": 0.1087,
+        "mae_mm": 0.024
+      }
+    }
+  },
+  "1_field_extraction": {
+    "all_frames": {
+      "manufacturer": {
+        "n_adjudicated": 302,
+        "n_abstained": 38,
+        "n_excluded_by_rule": 0,
+        "abstention_rate": 0.1118,
+        "presence_accuracy": 0.9702,
+        "recall": 0.9685,
+        "precision": 1.0,
+        "false_negatives": 9,
+        "false_positives": 0
+      },
+      "commodity_name": {
+        "n_adjudicated": 275,
+        "n_abstained": 0,
+        "n_excluded_by_rule": 65,
+        "abstention_rate": 0.0,
+        "presence_accuracy": 1.0,
+        "recall": 1.0,
+        "precision": 1.0,
+        "false_negatives": 0,
+        "false_positives": 0
+      },
+      "net_quantity": {
+        "n_adjudicated": 302,
+        "n_abstained": 38,
+        "n_excluded_by_rule": 0,
+        "abstention_rate": 0.1118,
+        "presence_accuracy": 0.9139,
+        "recall": 0.9144,
+        "precision": 0.9963,
+        "false_negatives": 25,
+        "false_positives": 1,
+        "value_exact_match": 0.9041,
+        "value_n": 292
+      },
+      "mfg_date": {
+        "n_adjudicated": 317,
+        "n_abstained": 23,
+        "n_excluded_by_rule": 0,
+        "abstention_rate": 0.0676,
+        "presence_accuracy": 0.9558,
+        "recall": 0.9902,
+        "precision": 0.9649,
+        "false_negatives": 3,
+        "false_positives": 11,
+        "value_exact_match": 0.9115,
+        "value_n": 305
+      },
+      "mrp": {
+        "n_adjudicated": 307,
+        "n_abstained": 33,
+        "n_excluded_by_rule": 0,
+        "abstention_rate": 0.0971,
+        "presence_accuracy": 0.9414,
+        "recall": 0.9386,
+        "precision": 1.0,
+        "false_negatives": 18,
+        "false_positives": 0,
+        "value_exact_match": 0.8874,
+        "value_n": 293
+      },
+      "consumer_care": {
+        "n_adjudicated": 309,
+        "n_abstained": 31,
+        "n_excluded_by_rule": 0,
+        "abstention_rate": 0.0912,
+        "presence_accuracy": 0.9806,
+        "recall": 0.9799,
+        "precision": 1.0,
+        "false_negatives": 6,
+        "false_positives": 0
+      }
+    },
+    "legible_frames_only": {
+      "manufacturer": {
+        "n_adjudicated": 281,
+        "n_abstained": 0,
+        "n_excluded_by_rule": 0,
+        "abstention_rate": 0.0,
+        "presence_accuracy": 0.968,
+        "recall": 0.966,
+        "precision": 1.0,
+        "false_negatives": 9,
+        "false_positives": 0
+      },
+      "commodity_name": {
+        "n_adjudicated": 254,
+        "n_abstained": 0,
+        "n_excluded_by_rule": 27,
+        "abstention_rate": 0.0,
+        "presence_accuracy": 1.0,
+        "recall": 1.0,
+        "precision": 1.0,
+        "false_negatives": 0,
+        "false_positives": 0
+      },
+      "net_quantity": {
+        "n_adjudicated": 281,
+        "n_abstained": 0,
+        "n_excluded_by_rule": 0,
+        "abstention_rate": 0.0,
+        "presence_accuracy": 0.911,
+        "recall": 0.9081,
+        "precision": 1.0,
+        "false_negatives": 25,
+        "false_positives": 0,
+        "value_exact_match": 0.9007,
+        "value_n": 272
+      },
+      "mfg_date": {
+        "n_adjudicated": 281,
+        "n_abstained": 0,
+        "n_excluded_by_rule": 0,
+        "abstention_rate": 0.0,
+        "presence_accuracy": 0.9573,
+        "recall": 0.9889,
+        "precision": 0.9675,
+        "false_negatives": 3,
+        "false_positives": 9,
+        "value_exact_match": 0.952,
+        "value_n": 271
+      },
+      "mrp": {
+        "n_adjudicated": 281,
+        "n_abstained": 0,
+        "n_excluded_by_rule": 0,
+        "abstention_rate": 0.0,
+        "presence_accuracy": 0.9359,
+        "recall": 0.9326,
+        "precision": 1.0,
+        "false_negatives": 18,
+        "false_positives": 0,
+        "value_exact_match": 0.8876,
+        "value_n": 267
+      },
+      "consumer_care": {
+        "n_adjudicated": 281,
+        "n_abstained": 0,
+        "n_excluded_by_rule": 0,
+        "abstention_rate": 0.0,
+        "presence_accuracy": 0.9786,
+        "recall": 0.9778,
+        "precision": 1.0,
+        "false_negatives": 6,
+        "false_positives": 0
+      }
+    },
+    "illegible_frames": {
+      "manufacturer": {
+        "n_adjudicated": 21,
+        "n_abstained": 38,
+        "n_excluded_by_rule": 0,
+        "abstention_rate": 0.6441,
+        "presence_accuracy": 1.0,
+        "recall": 1.0,
+        "precision": 1.0,
+        "false_negatives": 0,
+        "false_positives": 0
+      },
+      "commodity_name": {
+        "n_adjudicated": 21,
+        "n_abstained": 0,
+        "n_excluded_by_rule": 38,
+        "abstention_rate": 0.0,
+        "presence_accuracy": 1.0,
+        "recall": 1.0,
+        "precision": 1.0,
+        "false_negatives": 0,
+        "false_positives": 0
+      },
+      "net_quantity": {
+        "n_adjudicated": 21,
+        "n_abstained": 38,
+        "n_excluded_by_rule": 0,
+        "abstention_rate": 0.6441,
+        "presence_accuracy": 0.9524,
+        "recall": 1.0,
+        "precision": 0.9524,
+        "false_negatives": 0,
+        "false_positives": 1,
+        "value_exact_match": 0.95,
+        "value_n": 20
+      },
+      "mfg_date": {
+        "n_adjudicated": 36,
+        "n_abstained": 23,
+        "n_excluded_by_rule": 0,
+        "abstention_rate": 0.3898,
+        "presence_accuracy": 0.9444,
+        "recall": 1.0,
+        "precision": 0.9444,
+        "false_negatives": 0,
+        "false_positives": 2,
+        "value_exact_match": 0.5882,
+        "value_n": 34
+      },
+      "mrp": {
+        "n_adjudicated": 26,
+        "n_abstained": 33,
+        "n_excluded_by_rule": 0,
+        "abstention_rate": 0.5593,
+        "presence_accuracy": 1.0,
+        "recall": 1.0,
+        "precision": 1.0,
+        "false_negatives": 0,
+        "false_positives": 0,
+        "value_exact_match": 0.8846,
+        "value_n": 26
+      },
+      "consumer_care": {
+        "n_adjudicated": 28,
+        "n_abstained": 31,
+        "n_excluded_by_rule": 0,
+        "abstention_rate": 0.5254,
+        "presence_accuracy": 1.0,
+        "recall": 1.0,
+        "precision": 1.0,
+        "false_negatives": 0,
+        "false_positives": 0
+      }
+    },
+    "legible_frame_rate": 0.8265
+  },
+  "2_height_estimation": {
+    "overall": {
+      "n": 787,
+      "yield_given_found": 0.9325,
+      "yield_end_to_end": 0.8039,
+      "n_printed": 979,
+      "n_found": 844,
+      "bias_mm": 0.0207,
+      "sigma_mm": 0.2213,
+      "mae_mm": 0.0551,
+      "p95_abs_mm": 0.1409,
+      "max_abs_mm": 2.755,
+      "mean_rel_pct": 1.691,
+      "mae_rel_pct": 3.246
+    },
+    "overall_given_correct_field": {
+      "n": 758,
+      "yield_given_found": 0.9451,
+      "yield_end_to_end": 0.9451,
+      "n_printed": 802,
+      "n_found": 802,
+      "bias_mm": 0.0016,
+      "sigma_mm": 0.1288,
+      "mae_mm": 0.0327,
+      "p95_abs_mm": 0.1102,
+      "max_abs_mm": 2.755,
+      "mean_rel_pct": 0.304,
+      "mae_rel_pct": 1.722
+    },
+    "by_tier": {
+      "clean": {
+        "n": 239,
+        "yield_given_found": 0.9958,
+        "yield_end_to_end": 0.9917,
+        "n_printed": 241,
+        "n_found": 240,
+        "bias_mm": -0.0041,
+        "sigma_mm": 0.0707,
+        "mae_mm": 0.0099,
+        "p95_abs_mm": 0.0161,
+        "max_abs_mm": 1.085,
+        "mean_rel_pct": -0.082,
+        "mae_rel_pct": 0.486
+      },
+      "harsh": {
+        "n": 109,
+        "yield_given_found": 0.7517,
+        "yield_end_to_end": 0.4449,
+        "n_printed": 245,
+        "n_found": 145,
+        "bias_mm": 0.1401,
+        "sigma_mm": 0.474,
+        "mae_mm": 0.2097,
+        "p95_abs_mm": 1.3983,
+        "max_abs_mm": 2.432,
+        "mean_rel_pct": 9.491,
+        "mae_rel_pct": 12.576
+      },
+      "realistic": {
+        "n": 439,
+        "yield_given_found": 0.9564,
+        "yield_end_to_end": 0.8905,
+        "n_printed": 493,
+        "n_found": 459,
+        "bias_mm": 0.0046,
+        "sigma_mm": 0.1602,
+        "mae_mm": 0.0413,
+        "p95_abs_mm": 0.0965,
+        "max_abs_mm": 2.755,
+        "mean_rel_pct": 0.72,
+        "mae_rel_pct": 2.433
+      }
+    },
+    "by_field": {
+      "net_quantity": {
+        "n": 244,
+        "yield_given_found": 0.9139,
+        "yield_end_to_end": 0.7462,
+        "n_printed": 327,
+        "n_found": 267,
+        "bias_mm": -0.0118,
+        "sigma_mm": 0.1957,
+        "mae_mm": 0.0416,
+        "p95_abs_mm": 0.127,
+        "max_abs_mm": 2.755,
+        "mean_rel_pct": -0.102,
+        "mae_rel_pct": 1.808
+      },
+      "mrp": {
+        "n": 257,
+        "yield_given_found": 0.9345,
+        "yield_end_to_end": 0.7883,
+        "n_printed": 326,
+        "n_found": 275,
+        "bias_mm": 0.0079,
+        "sigma_mm": 0.1497,
+        "mae_mm": 0.0409,
+        "p95_abs_mm": 0.112,
+        "max_abs_mm": 1.808,
+        "mean_rel_pct": 0.9,
+        "mae_rel_pct": 2.571
+      },
+      "mfg_date": {
+        "n": 286,
+        "yield_given_found": 0.947,
+        "yield_end_to_end": 0.8773,
+        "n_printed": 326,
+        "n_found": 302,
+        "bias_mm": 0.0601,
+        "sigma_mm": 0.2823,
+        "mae_mm": 0.0793,
+        "p95_abs_mm": 0.2139,
+        "max_abs_mm": 2.432,
+        "mean_rel_pct": 3.932,
+        "mae_rel_pct": 5.081
+      }
+    },
+    "by_source_resolution_px_per_mm": {
+      "6-9": {
+        "n": 46,
+        "bias_mm": 0.0089,
+        "sigma_mm": 0.2962,
+        "mae_mm": 0.134
+      },
+      "9-12": {
+        "n": 150,
+        "bias_mm": 0.0242,
+        "sigma_mm": 0.0625,
+        "mae_mm": 0.0498
+      },
+      "12-16": {
+        "n": 162,
+        "bias_mm": -0.014,
+        "sigma_mm": 0.2192,
+        "mae_mm": 0.0401
+      },
+      "16-22": {
+        "n": 288,
+        "bias_mm": -0.0088,
+        "sigma_mm": 0.1161,
+        "mae_mm": 0.0295
+      },
+      ">=22": {
+        "n": 123,
+        "bias_mm": -0.0051,
+        "sigma_mm": 0.1317,
+        "mae_mm": 0.0247
+      }
+    },
+    "by_marker_tilt_deg": {
+      "0-5": {
+        "n": 243,
+        "bias_mm": -0.0016,
+        "sigma_mm": 0.0938,
+        "p95_abs_mm": 0.0189
+      },
+      "5-10": {
+        "n": 51,
+        "bias_mm": 0.0074,
+        "sigma_mm": 0.1442,
+        "p95_abs_mm": 0.1305
+      },
+      "10-15": {
+        "n": 206,
+        "bias_mm": -0.008,
+        "sigma_mm": 0.2263,
+        "p95_abs_mm": 0.1403
+      },
+      "15-20": {
+        "n": 159,
+        "bias_mm": -0.0113,
+        "sigma_mm": 0.1639,
+        "p95_abs_mm": 0.1786
+      },
+      "20-25": {
+        "n": 83,
+        "bias_mm": 0.0166,
+        "sigma_mm": 0.062,
+        "p95_abs_mm": 0.1531
+      },
+      "25-30": {
+        "n": 23,
+        "bias_mm": 0.0325,
+        "sigma_mm": 0.0562,
+        "p95_abs_mm": 0.1317
+      },
+      ">=30": {
+        "n": 4,
+        "bias_mm": -0.0112,
+        "sigma_mm": 0.0631,
+        "p95_abs_mm": 0.0936
+      }
+    }
+  },
+  "4_coplanarity_null_distribution": {
+    "n": 320,
+    "abs_median_slope_deg": {
+      "p50": 0.0265,
+      "p95": 0.0962,
+      "p99": 0.4882,
+      "max": 0.815
+    },
+    "slope_spread_deg": {
+      "p50": 0.3505,
+      "p95": 1.8013,
+      "p99": 3.6192,
+      "max": 4.287
+    }
+  },
+  "3_verdict_agreement_per_field": {
+    "net_quantity": {
+      "n": 265,
+      "decisive_rate": 0.6717,
+      "accuracy_on_decisive": 1.0,
+      "false_clear": 0,
+      "false_clear_rate": 0.0,
+      "false_violation": 0,
+      "false_violation_rate": 0.0,
+      "borderline_rate": 0.1585,
+      "not_assessed_rate": 0.1698,
+      "near_threshold_0.3mm": {
+        "n": 89,
+        "borderline_rate": 0.4719,
+        "wrong_decisive": 0
+      },
+      "clear_of_threshold": {
+        "n": 176,
+        "accuracy_on_decisive": 1.0,
+        "wrong_decisive": 0
+      }
+    },
+    "mrp": {
+      "n": 275,
+      "decisive_rate": 0.6727,
+      "accuracy_on_decisive": 1.0,
+      "false_clear": 0,
+      "false_clear_rate": 0.0,
+      "false_violation": 0,
+      "false_violation_rate": 0.0,
+      "borderline_rate": 0.0836,
+      "not_assessed_rate": 0.2436,
+      "near_threshold_0.3mm": {
+        "n": 72,
+        "borderline_rate": 0.3194,
+        "wrong_decisive": 0
+      },
+      "clear_of_threshold": {
+        "n": 203,
+        "accuracy_on_decisive": 1.0,
+        "wrong_decisive": 0
+      }
+    },
+    "mfg_date": {
+      "n": 302,
+      "decisive_rate": 0.7914,
+      "accuracy_on_decisive": 1.0,
+      "false_clear": 0,
+      "false_clear_rate": 0.0,
+      "false_violation": 0,
+      "false_violation_rate": 0.0,
+      "borderline_rate": 0.0,
+      "not_assessed_rate": 0.2086,
+      "near_threshold_0.3mm": {
+        "n": 27,
+        "borderline_rate": 0.0,
+        "wrong_decisive": 0
+      },
+      "clear_of_threshold": {
+        "n": 275,
+        "accuracy_on_decisive": 1.0,
+        "wrong_decisive": 0
+      }
+    }
+  },
+  "3a_overall_verdict_accuracy": {
+    "strict": {
+      "n_packs": 340,
+      "truth_non_compliant": 203,
+      "review_required_rate": 0.4324,
+      "decided_rate": 0.5676,
+      "accuracy_when_decided": 0.9275,
+      "violating_pack_cleared": 0,
+      "violating_pack_cleared_rate": 0.0,
+      "compliant_pack_accused": 14,
+      "compliant_pack_accused_rate": 0.0412,
+      "confusion": {
+        "truth=COMPLIANT|predicted=COMPLIANT": 57,
+        "truth=COMPLIANT|predicted=NON_COMPLIANT": 14,
+        "truth=COMPLIANT|predicted=REVIEW_REQUIRED": 66,
+        "truth=NON_COMPLIANT|predicted=NON_COMPLIANT": 122,
+        "truth=NON_COMPLIANT|predicted=REVIEW_REQUIRED": 81
+      }
+    },
+    "assessable": {
+      "n_packs": 340,
+      "truth_non_compliant": 199,
+      "review_required_rate": 0.4324,
+      "decided_rate": 0.5676,
+      "accuracy_when_decided": 0.9223,
+      "violating_pack_cleared": 0,
+      "violating_pack_cleared_rate": 0.0,
+      "compliant_pack_accused": 15,
+      "compliant_pack_accused_rate": 0.0441,
+      "confusion": {
+        "truth=COMPLIANT|predicted=COMPLIANT": 57,
+        "truth=COMPLIANT|predicted=NON_COMPLIANT": 15,
+        "truth=COMPLIANT|predicted=REVIEW_REQUIRED": 69,
+        "truth=NON_COMPLIANT|predicted=NON_COMPLIANT": 121,
+        "truth=NON_COMPLIANT|predicted=REVIEW_REQUIRED": 78
+      }
+    }
+  },
+  "3b_band_validation_on_adjudicated_population": {
+    "n_adjudicated_measurements": 667,
+    "fitted_band_mm": 0.15645,
+    "p95_abs_error_mm": 0.0869,
+    "p99_abs_error_mm": 0.15908,
+    "max_abs_error_mm": 0.304,
+    "fraction_outside_band": 0.01049,
+    "band_covers_p95": true,
+    "verdict": "band is adequate for the adjudicated population"
+  },
+  "gates_and_abstentions": {
+    "total": 340,
+    "calibrated": 338,
+    "abstain_NO_GLYPHS": 33,
+    "abstain_INSUFFICIENT_RESOLUTION": 21,
+    "abstain_OTHER": 2,
+    "abstain_NO_SCALE": 1
+  },
+  "throughput_ms_median": 6542.8
+}

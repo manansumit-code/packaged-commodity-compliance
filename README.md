@@ -41,8 +41,8 @@ Check it worked: `tesseract --version` — it must print 5.x from a **new** term
 **2. Clone and create a virtual environment**
 
 ```bash
-git clone https://github.com/manansumit-code/sih-project.git
-cd sih-project
+git clone https://github.com/manansumit-code/packaged-commodity-compliance.git
+cd packaged-commodity-compliance
 python3 -m venv .venv
 ```
 

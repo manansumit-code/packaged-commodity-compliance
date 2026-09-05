@@ -1,4 +1,4 @@
-"""Command-line entry points: single image, batch folder, and live camera."""
+"""Command-line entry points: single image and batch folder."""
 from __future__ import annotations
 
 import argparse
@@ -16,11 +16,6 @@ from lmpc.calibration import MarkerSpec, generate_marker
 from lmpc.pipeline import ScanConfig, scan_image
 from lmpc.report import render_text
 from lmpc.rules import PrintStyle
-
-COLOR = {"PASS": (60, 190, 60), "BORDERLINE": (0, 190, 240),
-         "FAIL": (50, 50, 235), "NOT_ASSESSED": (150, 150, 150)}
-OVERALL_COLOR = {"COMPLIANT": (60, 190, 60), "REVIEW_REQUIRED": (0, 190, 240),
-                 "NON_COMPLIANT": (50, 50, 235)}
 
 
 def _cfg(a) -> ScanConfig:
@@ -63,82 +58,6 @@ def cmd_batch(a):
         print(f"{os.path.basename(f):40s} {rep['overall']:16s} "
               f"viol={len(rep['violations'])} border={len(rep['borderline'])}")
     print(f"\n{len(rows)} images scanned.")
-
-
-def _overlay(frame, rep, fps):
-    h, w = frame.shape[:2]
-    c = OVERALL_COLOR.get(rep["overall"], (150, 150, 150))
-    cv2.rectangle(frame, (0, 0), (w, 46), (30, 30, 30), -1)
-    cv2.putText(frame, rep["overall"], (12, 32), cv2.FONT_HERSHEY_SIMPLEX,
-                1.0, c, 2, cv2.LINE_AA)
-    cv2.putText(frame, f"{fps:.1f} fps", (w - 120, 30),
-                cv2.FONT_HERSHEY_SIMPLEX, 0.6, (200, 200, 200), 1, cv2.LINE_AA)
-    y = 76
-    cal = rep["calibration"]
-    txt = (f"scale {cal['px_per_mm_at_marker']:.1f} px/mm  tilt "
-           f"{cal['tilt_deg']:.0f}deg" if cal["ok"] else "NO MARKER IN FRAME")
-    cv2.putText(frame, txt, (12, y), cv2.FONT_HERSHEY_SIMPLEX, 0.6,
-                (230, 230, 230), 1, cv2.LINE_AA)
-    y += 30
-    for d in rep["declarations"]:
-        hh = d.get("height")
-        if hh and hh.get("measured_mm") is not None:
-            col = COLOR.get(hh["verdict"], (150, 150, 150))
-            line = (f"{d['field']}: {hh['measured_mm']:.2f}mm / "
-                    f"{hh['required_mm']:.1f}mm  {hh['verdict']}")
-        elif hh:
-            col = COLOR["NOT_ASSESSED"]
-            line = f"{d['field']}: not measurable"
-        else:
-            col = COLOR["PASS"] if d["present"] else COLOR["FAIL"]
-            line = f"{d['field']}: {'found' if d['present'] else 'MISSING'}"
-        cv2.putText(frame, line, (12, y), cv2.FONT_HERSHEY_SIMPLEX, 0.6,
-                    col, 2, cv2.LINE_AA)
-        y += 27
-    cv2.putText(frame, "[space] freeze+save   [q] quit", (12, h - 14),
-                cv2.FONT_HERSHEY_SIMPLEX, 0.55, (190, 190, 190), 1, cv2.LINE_AA)
-    return frame
-
-
-def cmd_camera(a):
-    cap = cv2.VideoCapture(a.device)
-    cap.set(cv2.CAP_PROP_FRAME_WIDTH, a.width)
-    cap.set(cv2.CAP_PROP_FRAME_HEIGHT, a.height)
-    if not cap.isOpened():
-        sys.exit("cannot open camera")
-    cfg = _cfg(a)
-    cfg.psms = (6,)                      # live path favours latency
-    con = db.connect()
-    last, rep = 0.0, None
-    fps = 0.0
-    print("live scanning - keep the marker in frame, coplanar with the label")
-    while True:
-        ok, frame = cap.read()
-        if not ok:
-            break
-        now = time.time()
-        if now - last > a.interval:
-            try:
-                rep = scan_image(frame, cfg)
-            except Exception as e:
-                print("scan error:", e)
-            fps = 1.0 / max(1e-6, now - last)
-            last = now
-        if rep:
-            frame = _overlay(frame, rep, fps)
-        cv2.imshow("LMPC Compliance Scanner", frame)
-        k = cv2.waitKey(1) & 0xFF
-        if k == ord("q"):
-            break
-        if k == ord(" ") and rep:
-            p = os.path.join(os.path.dirname(__file__), "..", "data", "images",
-                             f"{rep['scan_id']}.jpg")
-            os.makedirs(os.path.dirname(p), exist_ok=True)
-            cv2.imwrite(p, frame)
-            db.save_scan(con, rep, p)
-            print(render_text(rep))
-            print(f"[frozen and saved as {rep['scan_id']}]")
-    cap.release(); cv2.destroyAllWindows()
 
 
 def cmd_calibrate_physical(a):
@@ -286,13 +205,6 @@ def main():
     p = sub.add_parser("batch"); p.add_argument("folder")
     p.add_argument("--save", action="store_true"); common(p)
     p.set_defaults(func=cmd_batch)
-
-    p = sub.add_parser("camera")
-    p.add_argument("--device", type=int, default=0)
-    p.add_argument("--width", type=int, default=1920)
-    p.add_argument("--height", type=int, default=1080)
-    p.add_argument("--interval", type=float, default=0.7)
-    common(p); p.set_defaults(func=cmd_camera)
 
     p = sub.add_parser("marker")
     p.add_argument("--out", default="marker.png")

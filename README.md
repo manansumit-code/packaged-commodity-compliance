@@ -84,9 +84,6 @@ python backend/lmpc/cli.py scan photo.jpg --marker-mm 40.0
 # 3. or run the API — interactive docs at http://localhost:8000/docs
 uvicorn lmpc.api:app --app-dir backend --port 8000
 curl -X POST localhost:8000/api/scan -F "file=@photo.jpg" -F "marker_length_mm=40"
-
-# 4. live camera (same pipeline, one frame at a time)
-python backend/lmpc/cli.py camera --marker-mm 40.0
 ```
 
 **Scanning a real product?** Read [`USAGE.md`](USAGE.md) first — how you photograph
@@ -143,7 +140,7 @@ The reported height is the **median across glyphs**, never a single reading.
 
 | Decision | Choice | Reason |
 |---|---|---|
-| Camera or upload? | **Both — one code path.** `scan_image(frame)` is frame-agnostic; the CLI feeds it webcam frames, the API feeds it uploads | The measurement problem is identical. Upload is what makes accuracy *reproducible*, which is the point of this build |
+| Camera or upload? | **Upload only.** `scan_image(frame)` is frame-agnostic; the CLI feeds it files, the API feeds it uploads | A webcam cannot reach the px/mm floor the measurement needs — see *Why there is no webcam mode*. Upload is also what makes accuracy *reproducible*, which is the point of this build |
 | OCR engine | **Tesseract 5, local** | Returns per-character boxes, which the measurement stage needs. Runs offline — nothing on the scanning path can fail on venue wifi |
 | Field classification | **Regex / keyword rules** | Bounded vocabulary, microseconds per frame, offline, and **cannot invent a value that is not on the label**. Every value returned is verbatim OCR text |
 | Legal thresholds | **Hardcoded tables, looked up deterministically** | No model of any size gets to produce a legal number. `GET /api/rules` discloses every threshold applied |
@@ -375,10 +372,34 @@ Measured on a 2844×2213 frame, single process, nothing else running:
 | `fast` at 1080p | 1933 ms |
 | **calibration + rectification alone** | **77 ms** |
 
-The geometry — the part that makes physical measurement possible — is real-time. OCR is
-the entire cost. The live camera view therefore refreshes at roughly **0.5 fps behind a
-smooth video feed**, not per-frame; it is a live *viewfinder with periodic assessment*,
-not real-time analysis. Treat that as the honest claim.
+The geometry — the part that makes physical measurement possible — is real-time; OCR is
+the entire cost. This is a **still-image** tool: photograph the pack with a phone, then
+scan the file. There is no live webcam mode, because a webcam cannot resolve the print.
+See *Why there is no webcam mode* below.
+
+### Why there is no webcam mode
+
+Earlier builds shipped a live webcam view. It was removed, because a webcam cannot
+deliver the one quantity the whole measurement depends on: **pixels per millimetre.**
+
+The resolution floor is 6 px/mm — below it, height error is roughly a third of a
+millimetre against a 1 mm legal threshold, so the pipeline refuses rather than guesses.
+Downsampling a real phone capture of a retail pack to typical webcam resolutions puts it
+under that floor:
+
+| capture | px/mm | outcome |
+|---|---|---|
+| phone, full resolution | 12.4 | measured, second-best accuracy band |
+| same frame at 1080p | 8.4 | measured, higher error |
+| same frame at 720p | **5.6** | **below floor — refused, no verdict** |
+
+A mode whose most likely outcome is `INSUFFICIENT_RESOLUTION` is not a feature. Phone
+photo in, report out: `cli.py scan`, `cli.py batch`, or `POST /api/scan`.
+
+This costs nothing in aiming feedback that mattered, because the live view never had
+any: the assessment ran the full OCR pass, so the overlay lagged the video by 2–4
+seconds and referred to a frame the operator had already moved off.
+
 
 ---
 
@@ -442,7 +463,6 @@ fonts). The command writes a real `uncertainty.json` whose `source` says "PHYSIC
 ```
 cli.py scan <image>          single image, human or --json output
 cli.py batch <folder>        batch scan, one line per file
-cli.py camera                live webcam with PASS/BORDERLINE/FAIL overlay
 cli.py marker                generate a printable marker
 cli.py calibrate-physical    fit the error band from real photographs
 cli.py report <scan_id>      re-print a stored report

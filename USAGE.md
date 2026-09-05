@@ -73,26 +73,12 @@ A whole folder at once:
 python backend/lmpc/cli.py batch ~/Desktop/products/ --marker-mm 39.4 --save
 ```
 
-## Scanning with a webcam
+**Use a phone camera, not a webcam.** There is no live webcam mode. A webcam at 720p
+images a retail pack at roughly 5.6 px/mm, under the 6 px/mm floor the pipeline needs
+before it will report a height at all — every frame would come back
+`INSUFFICIENT_RESOLUTION`. Shoot the pack with a phone at full resolution, transfer the
+file, and scan it.
 
-```bash
-python backend/lmpc/cli.py camera --marker-mm 39.4
-```
-
-A window opens with a live overlay: green PASS, amber BORDERLINE, red FAIL, plus the
-current px/mm and tilt. Hold the pack and card in view, square-on.
-
-- **space** — freeze the current reading, save it to history, print the full report
-- **q** — quit
-
-macOS will ask for camera permission the first time; grant it to the terminal app.
-
-The assessment refreshes roughly **twice a second**, not every frame — the video is
-smooth but the verdict lags it. Treat it as a live viewfinder that reassesses
-periodically, and press space once the overlay is stable.
-
-Other options: `--device 1` (external webcam), `--width 1920 --height 1080`,
-`--interval 0.7` (seconds between assessments).
 
 ## Using the API instead
 

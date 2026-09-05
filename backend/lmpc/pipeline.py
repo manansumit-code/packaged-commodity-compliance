@@ -36,8 +36,21 @@ from .rules import (MANDATORY_DECLARATIONS, PrintStyle, Uncertainty, Verdict,
                     declaration_rule, required_height_mm, verdict_for)
 
 # Declarations whose numerals carry a Rule 7 height threshold and that we can
-# actually locate on the label.
+# actually locate on the label. These are ADJUDICATED.
 MEASURED_FIELDS = ("net_quantity", "mrp", "mfg_date")
+
+# The remaining declarations are lettering, not numerals. Their height is
+# measured and reported, but NOT adjudicated, for two reasons:
+#
+#   * the measurement is a median over whatever glyphs the line contains, so a
+#     mixed-case line returns something between x-height and cap-height, which
+#     is not the quantity Rule 7 names; and
+#   * the error band in data/uncertainty.json was fitted on numerals, so it
+#     does not describe this measurement.
+#
+# Reporting the number is useful - it tells you roughly how big the small
+# print is. Turning it into a verdict would be inventing precision.
+INFORMATIONAL_FIELDS = ("manufacturer", "commodity_name", "consumer_care")
 
 UNCERTAINTY_PATH = os.path.join(os.path.dirname(__file__), "..", "data",
                                 "uncertainty.json")
@@ -168,9 +181,10 @@ def scan_image(bgr: np.ndarray, cfg: ScanConfig = None) -> dict:
             "height": None,
         }
 
-        if name in MEASURED_FIELDS and hit.present:
-            entry["height"] = _assess_height(work, cal, metric_ok, ocr, hit,
-                                             name, qty, cfg, gates)
+        if hit.present and name in (MEASURED_FIELDS + INFORMATIONAL_FIELDS):
+            entry["height"] = _assess_height(
+                work, cal, metric_ok, ocr, hit, name, qty, cfg, gates,
+                informational=name in INFORMATIONAL_FIELDS)
         declarations.append(entry)
 
     # ---- 5. roll-up -------------------------------------------------------
@@ -184,7 +198,7 @@ def scan_image(bgr: np.ndarray, cfg: ScanConfig = None) -> dict:
                 + ("" if d["assessable"] else " by rule")
                 + ("" if legible else " in a frame this illegible"))
         h = d.get("height")
-        if h:
+        if h and not h.get("informational"):
             v = h.get("verdict")
             msg = (f"{d['field']}: numeral height "
                    f"{h.get('measured_mm')} mm vs required "
@@ -237,7 +251,18 @@ def scan_image(bgr: np.ndarray, cfg: ScanConfig = None) -> dict:
     }
 
 
-MIN_OCR_CONF = 65.0
+# Below this mean OCR confidence the frame cannot support an "this
+# declaration is ABSENT" claim, and absence is reported as NOT ASSESSED
+# instead. It does NOT block height measurement.
+#
+# Lowered from 65 to 60 on operator request, after real phone photographs of
+# genuine retail packs came in at 60-64 and had every declaration withheld.
+# The cost is real and runs the other way: at a lower bar the pipeline will
+# start calling a declaration missing on frames the recogniser itself read
+# poorly, and a false "missing" is an accusation against a trader. 60 is a
+# judgement, not a measurement - there is no experiment in this repo that
+# fixes the right value.
+MIN_OCR_CONF = 60.0
 MIN_WORD_PX = 11.0
 # A field matched only by a bare value pattern - a currency amount with no
 # "MRP" nearby, a date with no "Mfg." nearby - may well be a different
@@ -334,10 +359,12 @@ def _legibility(ocr, cal, metric_ok, unc):
     return (not reasons), reasons, label_ppmm, med_word_px
 
 
-def _assess_height(work, cal, metric_ok, ocr, hit, name, qty, cfg, gates) -> dict:
+def _assess_height(work, cal, metric_ok, ocr, hit, name, qty, cfg, gates,
+                   informational: bool = False) -> dict:
     unc = cfg.uncertainty
     lk = required_height_mm(name, qty, cfg.print_style, cfg.panel_area_cm2)
     out: dict[str, Any] = {
+        "informational": informational,
         "required_mm": lk.required_mm,
         "rule": f"Rule 7 Table {lk.table}" if lk.table in ("I", "II")
                 else "Rule 7(3)",
@@ -380,7 +407,12 @@ def _assess_height(work, cal, metric_ok, ocr, hit, name, qty, cfg, gates) -> dic
                       "blocking_height": True, "detail": out["reason"]})
         return out
 
-    expected_digits = sum(c.isdigit() for c in (hit.value_text or ""))
+    # A lettering field is measured over its whole line, so the recogniser's
+    # digit count (a phone number, say) says nothing about how many glyphs
+    # segmentation should find. Disable the cross-check rather than let it
+    # fire spuriously.
+    expected_digits = (0 if informational
+                       else sum(c.isdigit() for c in (hit.value_text or "")))
     m: HeightMeasurement = measure_field_height(
         work, roi, chars, px_per_mm=cal.rect_px_per_mm,
         source_px_per_mm=src_ppmm, expected_digits=expected_digits)
@@ -435,6 +467,17 @@ def _assess_height(work, cal, metric_ok, ocr, hit, name, qty, cfg, gates) -> dic
         "glyph_count_matches_ocr": m.count_matches,
         "band_inflation": inflate,
     })
+    if informational:
+        out["informational"] = True
+        out["verdict"] = Verdict.NOT_ASSESSED.value
+        out["reason"] = (
+            "Lettering, not numerals. The height shown is the median over the "
+            "glyphs on this line, which for mixed-case text sits between "
+            "x-height and cap-height, and the error band was fitted on "
+            "numerals. Reported for information; not adjudicated.")
+        out.pop("advisory_verdict", None)
+        return out
+
     if lk.advisory_mm:
         av, _ = verdict_for(m.height_mm, lk.advisory_mm, eff)
         out["advisory_verdict"] = av.value

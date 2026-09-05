@@ -28,3 +28,9 @@ Thumbs.db
 .vscode/
 .idea/
 *.swp
+
+# Per-user scanner settings (your measured calibration card size) and the
+# drop folder's contents. The folder itself and its README are tracked.
+scanner.json
+inbox/*
+!inbox/README.txt

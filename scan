@@ -1,0 +1,32 @@
+#!/usr/bin/env bash
+# Drop-a-photo compliance scanner.
+#
+#   ./scan                    scan every photo in the inbox folder
+#   ./scan photo.jpg          scan one file
+#   ./scan --marker-mm 39.4   record your printed card's measured size
+#
+# Finds the project's virtualenv itself, so there is no venv to activate and
+# nothing to remember.
+set -euo pipefail
+cd "$(dirname "$0")"
+
+if [ -x ".venv/bin/python" ]; then
+    PY=".venv/bin/python"
+elif [ -x "venv/bin/python" ]; then
+    PY="venv/bin/python"
+elif [ -n "${VIRTUAL_ENV:-}" ]; then
+    PY="$VIRTUAL_ENV/bin/python"
+else
+    cat <<'MSG'
+
+  I cannot find this project's Python environment (.venv).
+  Create it once with:
+
+      python3 -m venv .venv
+      .venv/bin/pip install -r backend/requirements.txt
+
+MSG
+    exit 1
+fi
+
+exec "$PY" scan.py "$@"

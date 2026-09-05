@@ -1,5 +1,36 @@
 # Using the scanner on a real product
 
+## The short version: drop a photo in a folder
+
+If you just want a result and not a lecture:
+
+```bash
+./scan --marker-mm 39.4     # once, after measuring your printed card
+```
+
+Then copy photos into the `inbox/` folder and run:
+
+```bash
+./scan
+```
+
+Each photo is scanned and the result printed in plain English — what is
+missing, what is printed too small, and what to do about it. The photo and its
+result then move into `inbox/done/`.
+
+Other forms:
+
+| command | what it does |
+|---|---|
+| `./scan` | scan every photo in `inbox/` |
+| `./scan photo.jpg` | scan one file anywhere, leave it where it is |
+| `./scan inbox/done/photo.jpg --details` | the same, plus the full technical report |
+| `./scan --marker-mm 39.4` | record your card's measured size (remembered in `scanner.json`) |
+
+`./scan` finds the project's virtualenv itself, so there is nothing to
+activate. The rest of this page is the detailed version, and the technical
+`cli.py` interface it wraps.
+
 ## One-time setup
 
 Follow the **Setup** section of [`README.md`](README.md) — clone, create the virtual

@@ -83,6 +83,10 @@ GATE_ADVICE = {
         "WhatsApp, send the original file instead: WhatsApp re-compresses "
         "photos and that alone is usually the cause. Otherwise reshoot "
         "sharper, with softer light and no flash glare.",
+    "UNUSABLE_REFERENCE_MARKER":
+        "I found the calibration card but could not read its square cleanly "
+        "enough to set a scale. Reprint the card if the black square is "
+        "faded or speckled, keep it flat and uncreased, and shoot again.",
     "PANEL_NOT_COPLANAR":
         "The calibration card does not look like it is on the same flat "
         "surface as the printing. Lay the card flat against the same face as "
@@ -103,6 +107,17 @@ def _short_reason(reason: str) -> str:
     r = (reason or "").lower()
     if "px/mm" in r and "floor" in r:
         return "the photo is not close enough to measure this"
+    # These four must be tested before the generic "no usable physical
+    # scale" line below, which would otherwise blame a missing card for
+    # every one of them.
+    if "no reference marker in this frame" in r:
+        return "no calibration card in the photo, so sizes cannot be measured"
+    if "geometry is unusable" in r:
+        return "the calibration card was found but could not be read cleanly"
+    if "too oblique" in r:
+        return "the calibration card is too angled in this photo to set a scale"
+    if "not coplanar" in r:
+        return "the card is not on the same flat surface as the printing"
     if "no usable physical scale" in r:
         return "no calibration card in the photo, so sizes cannot be measured"
     if "recogniser read" in r or "segmentation" in r:

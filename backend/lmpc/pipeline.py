@@ -111,7 +111,14 @@ def scan_image(bgr: np.ndarray, cfg: ScanConfig = None) -> dict:
 
     metric_ok = cal.ok
     if not cal.ok:
-        gates.append({"gate": "NO_REFERENCE_MARKER", "blocking_height": True,
+        # "No marker in frame" and "marker found but its geometry is
+        # unusable" are different failures and deserve different advice;
+        # reporting the second as the first tells the user to add a card
+        # that is already in the picture.
+        found = "No ArUco reference marker found" not in cal.reason
+        gates.append({"gate": ("UNUSABLE_REFERENCE_MARKER" if found
+                               else "NO_REFERENCE_MARKER"),
+                      "blocking_height": True,
                       "detail": cal.reason})
         work = bgr
         rect_ppmm = 0.0
@@ -359,6 +366,24 @@ def _legibility(ocr, cal, metric_ok, unc):
     return (not reasons), reasons, label_ppmm, med_word_px
 
 
+# Why a frame carries no usable millimetre scale. Each states the actual
+# cause, because the only thing a user can act on is the real one.
+_NO_SCALE_REASON = {
+    "NO_REFERENCE_MARKER":
+        "No reference marker in this frame, so there is no physical scale; "
+        "height cannot be measured.",
+    "UNUSABLE_REFERENCE_MARKER":
+        "The reference marker was found but its geometry is unusable, so the "
+        "physical scale is void; height cannot be measured.",
+    "EXCESSIVE_TILT":
+        "The reference marker was found, but the frame is too oblique for its "
+        "scale to hold; height cannot be measured.",
+    "PANEL_NOT_COPLANAR":
+        "The reference marker was found, but the panel is not coplanar with "
+        "it, so its scale does not apply here; height cannot be measured.",
+}
+
+
 def _assess_height(work, cal, metric_ok, ocr, hit, name, qty, cfg, gates,
                    informational: bool = False) -> dict:
     unc = cfg.uncertainty
@@ -382,8 +407,15 @@ def _assess_height(work, cal, metric_ok, ocr, hit, name, qty, cfg, gates,
         out["reason"] = lk.reason
         return out
     if not metric_ok:
-        out["reason"] = ("No usable physical scale for this frame; height "
-                         "cannot be measured.")
+        # Name the gate that actually voided the scale. A bare "no usable
+        # scale" reads downstream as "no card in the photo", which is a lie
+        # whenever the card was found and something else disqualified it.
+        blocking = next((g["gate"] for g in gates
+                         if g.get("blocking_height")), None)
+        out["scale_gate"] = blocking
+        out["reason"] = _NO_SCALE_REASON.get(
+            blocking, "No usable physical scale for this frame; height "
+                      "cannot be measured.")
         return out
 
     roi = union_box(hit.value_boxes)

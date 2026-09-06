@@ -142,5 +142,9 @@
       "sigma_mm": 0.1087,
       "mae_mm": 0.024
     }
-  }
+  },
+  "hard_baseline_slope_deg": 5.0,
+  "hard_baseline_spread_deg": 15.0,
+  "coplanarity_mm_per_deg": 0.035,
+  "coplanarity_note": "max_baseline_slope_deg (0.63) is the CLEAN threshold only. It was fitted on the synthetic split, whose null tops out at 0.591 deg (coplanarity_null below) because the marker there is coplanar by construction. Real photographs of flat setups exceed it routinely: across 8 real captures the statistic spanned -0.71 to +0.80 deg, and one capture at 1.41 deg agreed with a 0.08 deg capture of the same artwork to 0.048 mm. Exceeding the clean threshold therefore widens the band (coplanarity_mm_per_deg) rather than voiding the scan; only hard_baseline_slope_deg refuses it. These two hard limits are engineering judgement, NOT fitted values - there is no ground-truth non-coplanar set in this repo to fit them on."
 }

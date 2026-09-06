@@ -4,6 +4,9 @@ Drop photos in the inbox folder, run ./scan, get a plain-English result.
 
     ./scan                    scan every photo in the inbox folder
     ./scan photo.jpg          scan one file anywhere
+    ./scan --frames a.jpg b.jpg c.jpg
+                              several photos of ONE pack, combined into a
+                              single answer with a real error bar
     ./scan --marker-mm 39.4   tell it your printed card's size (once)
 
 Scanned photos move to inbox/done/ with their result saved beside them.
@@ -25,6 +28,7 @@ import cv2  # noqa: E402
 
 from lmpc import db  # noqa: E402
 from lmpc.calibration import MarkerSpec  # noqa: E402
+from lmpc.consensus import combine, render_agreement  # noqa: E402
 from lmpc.friendly import render_friendly, render_one_liner  # noqa: E402
 from lmpc.pipeline import ScanConfig, scan_image  # noqa: E402
 
@@ -71,8 +75,17 @@ def read_image(path: str):
 def main() -> None:
     ap = argparse.ArgumentParser("scan")
     ap.add_argument("image", nargs="?", help="scan just this one file")
+    ap.add_argument("--frames", nargs="+", metavar="PHOTO",
+                    help="two or more photos of the SAME pack: each is "
+                         "scanned on its own, then the readings are combined")
     ap.add_argument("--marker-mm", type=float,
                     help="measured size of your printed card; remembered")
+    ap.add_argument("--panel-area-cm2", type=float,
+                    help="area of the printed block that carries the "
+                         "declarations, in square centimetres")
+    ap.add_argument("--panel-cm", metavar="HxW",
+                    help="that printed block as height x width in cm, e.g. "
+                         "8.9x6.7 — the area is worked out for you")
     ap.add_argument("--details", action="store_true",
                     help="also print the full technical report")
     args = ap.parse_args()
@@ -86,8 +99,57 @@ def main() -> None:
         print(SETUP)
         sys.exit(1)
 
-    scfg = ScanConfig(marker=MarkerSpec(marker_length_mm=cfg["marker_mm"]))
+    # Rule 7's table is keyed on the area of the principal display panel, so
+    # without that area there is no minimum height to compare against.
+    #
+    # MEASURE THE PRINTED BLOCK THAT CARRIES THE DECLARATIONS. Rule 2(h)
+    # defines the panel as the area where that information is given, and on
+    # most packs it is a defined block, not the whole face. Two wrong
+    # readings both inflate the requirement and manufacture violations:
+    # the pack's own "Size: 29.7 x 21 cm" (that is the CONTENTS), and the
+    # full cover area. On this exercise book the block is 8.9 x 6.7 cm and
+    # needs 1.5 mm; the cover would have demanded 4.0 mm.
+    area = args.panel_area_cm2
+    if area is None and args.panel_cm:
+        try:
+            hh, ww = (float(v) for v in args.panel_cm.lower().split("x", 1))
+            area = hh * ww
+            print(f"\n  Main display face {hh:g} x {ww:g} cm = {area:.1f} cm2.")
+        except ValueError:
+            sys.exit("  I could not read --panel-cm; write it like 29.7x21")
+
+    scfg = ScanConfig(marker=MarkerSpec(marker_length_mm=cfg["marker_mm"]),
+                      panel_area_cm2=area)
     con = db.connect()
+
+    if args.frames:
+        if len(args.frames) < 2:
+            sys.exit("  --frames needs at least two photos of the same pack.")
+        missing = [f for f in args.frames if not os.path.exists(f)]
+        if missing:
+            sys.exit("  I cannot find: " + ", ".join(missing))
+        reports, names = [], []
+        for pth in args.frames:
+            nm = os.path.basename(pth)
+            img = read_image(pth)
+            if img is None:
+                print(f"\n  I could not open {nm} as an image; skipping.")
+                continue
+            print(f"\n  reading {nm} ...", flush=True)
+            reports.append(scan_image(img, scfg))
+            names.append(nm)
+        if not reports:
+            sys.exit("  None of those photos could be opened.")
+        if len(reports) == 1:
+            print("\n  Only one photo was readable, so there is nothing to "
+                  "cross-check against.")
+        merged = combine(reports, names)
+        db.save_scan(con, merged, args.frames[0])
+        print(render_friendly(merged,
+                              filename=f"{len(reports)} photos of one pack",
+                              show_details=args.details))
+        print(render_agreement(merged))
+        return
 
     if args.image:
         paths = [args.image]

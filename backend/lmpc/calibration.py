@@ -52,6 +52,10 @@ class Calibration:
     tilt_deg: float = 0.0
     taper: float = 1.0                # perspective foreshortening strength
     marker_corners_px: Optional[np.ndarray] = None
+    # Which preprocessing variant the marker was finally detected on. "raw"
+    # means it was clean; anything else is a signal that the printed card is
+    # degraded and worth reprinting.
+    detect_variant: str = "raw"
     # rectified metric image
     rectified: Optional[np.ndarray] = None
     rect_px_per_mm: float = 0.0
@@ -69,6 +73,36 @@ class Calibration:
         return _jacobian_px_per_mm(self.H_mm_to_img, X, Y)
 
 
+def _detect_variants(gray: np.ndarray):
+    """Grayscale variants to try marker detection on, cheapest first.
+
+    A marker printed on ordinary office paper and photographed under room
+    light is not a clean binary square. Toner speckle, paper texture and JPEG
+    ringing all put high-frequency noise inside the black cells, and ArUco's
+    bit sampler reads that noise as bit errors, so the marker is found as a
+    quad and then REJECTED at identification. The failure is silent: the
+    caller only ever sees "no marker in frame".
+
+    Each variant attacks one cause, and all of them stay at FULL resolution
+    so that corner refinement keeps its sub-pixel accuracy - the px/mm ratio
+    is derived from those corners, so resampling here would cost measurement
+    precision to buy detection.
+    """
+    yield "raw", gray
+    # Median filtering removes speckle without moving an edge, which is
+    # exactly the trade this needs: it must not shift the corners.
+    yield "median3", cv2.medianBlur(gray, 3)
+    yield "median5", cv2.medianBlur(gray, 5)
+    # A marker lit unevenly across its face (one side in shadow) defeats a
+    # single global threshold; flattening local contrast first fixes it.
+    clahe = cv2.createCLAHE(clipLimit=3.0, tileGridSize=(8, 8)).apply(gray)
+    yield "clahe", clahe
+    yield "clahe+median3", cv2.medianBlur(clahe, 3)
+    # Closing fills pinholes left by a printer that is low on toner.
+    yield "median3+close", cv2.morphologyEx(
+        cv2.medianBlur(gray, 3), cv2.MORPH_CLOSE, np.ones((3, 3), np.uint8))
+
+
 def _get_detector(spec: MarkerSpec):
     dic = cv2.aruco.getPredefinedDictionary(getattr(cv2.aruco, spec.dictionary))
     params = cv2.aruco.DetectorParameters()
@@ -79,6 +113,15 @@ def _get_detector(spec: MarkerSpec):
     params.adaptiveThreshWinSizeMin = 3
     params.adaptiveThreshWinSizeMax = 43
     params.adaptiveThreshWinSizeStep = 8
+    # Ink bleed and JPEG ringing contaminate the outer rim of every bit cell.
+    # Sampling each cell from a larger central margin reads the bit the
+    # printer intended rather than the smear at its edge.
+    params.perspectiveRemoveIgnoredMarginPerCell = 0.23
+    # A printed-and-photographed marker carries a few genuinely wrong bits.
+    # DICT_4X4_50 has a small Hamming distance, so this is raised only
+    # slightly off the 0.6 default: enough to absorb toner speckle, not
+    # enough to start inventing markers out of noise.
+    params.errorCorrectionRate = 0.75
     return cv2.aruco.ArucoDetector(dic, params)
 
 
@@ -125,9 +168,16 @@ def calibrate(bgr: np.ndarray, spec: MarkerSpec = MarkerSpec(),
               rect_px_per_mm: Optional[float] = None) -> Calibration:
     """Locate the marker, build the metric homography, rectify the image."""
     gray = cv2.cvtColor(bgr, cv2.COLOR_BGR2GRAY) if bgr.ndim == 3 else bgr
-    corners, ids, _ = _get_detector(spec).detectMarkers(gray)
+    detector = _get_detector(spec)
+    corners, ids, variant = None, None, "raw"
+    for vname, vimg in _detect_variants(gray):
+        c, i, _ = detector.detectMarkers(vimg)
+        if i is not None and len(i) > 0:
+            corners, ids, variant = c, i, vname
+            break
     if ids is None or len(ids) == 0:
-        return Calibration(False, "No ArUco reference marker found in frame. "
+        return Calibration(False, "No ArUco reference marker found in frame, "
+                                  "on any of the six image variants tried. "
                                   "Physical measurement is impossible without "
                                   "a scale reference in the same plane.")
 
@@ -190,7 +240,7 @@ def calibrate(bgr: np.ndarray, spec: MarkerSpec = MarkerSpec(),
         ok=True, marker_id=int(ids[pick]), H_mm_to_img=H,
         px_per_mm_at_marker=px_per_mm, tilt_deg=tilt, taper=taper,
         marker_corners_px=c, rectified=rect, rect_px_per_mm=scale,
-        rect_origin_mm=(x0, y0),
+        rect_origin_mm=(x0, y0), detect_variant=variant,
     )
 
 

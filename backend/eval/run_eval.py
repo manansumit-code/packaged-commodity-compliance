@@ -41,9 +41,23 @@ ALL_FIELDS = ("manufacturer", "commodity_name", "net_quantity", "mfg_date",
               "mrp", "consumer_care")
 
 
-def _gt_required_mm(field: str, qty_text: str) -> float | None:
+# The synthetic labels are rendered at a known physical panel size, so the
+# principal-display-panel area that amended Rule 7 keys Table-I on is not a
+# guess here - it is a property of the generator. Passing None instead (as
+# this did before the table was corrected) makes every threshold lookup
+# abstain, which silently empties the whole height metric.
+def _panel_area_cm2(spec=None) -> float:
+    from eval.synth import LabelSpec
+    sp = spec if spec is not None else LabelSpec()
+    return (sp.panel_w_mm * sp.panel_h_mm) / 100.0
+
+
+def _gt_required_mm(field: str, qty_text: str,
+                    panel_area_cm2: float | None = None) -> float | None:
     q = parse_net_quantity(qty_text)
-    lk = required_height_mm(field, q, PrintStyle.NORMAL, None)
+    lk = required_height_mm(field, q, PrintStyle.NORMAL,
+                            panel_area_cm2 if panel_area_cm2 is not None
+                            else _panel_area_cm2())
     return lk.required_mm if lk.ok else None
 
 
@@ -56,7 +70,9 @@ def build_case(i: int, seed: int, tier: str, threshold_focus: float,
     # Put a controlled fraction of cases right at the legal boundary. Without
     # them the verdict metric only ever measures easy calls.
     if rng.random() < threshold_focus:
-        req = _gt_required_mm("net_quantity", f"{spec.qty_value:g} {spec.qty_unit}")
+        req = _gt_required_mm("net_quantity",
+                              f"{spec.qty_value:g} {spec.qty_unit}",
+                              _panel_area_cm2(spec))
         if req:
             spec.qty_height_mm = max(0.5, req + rng.uniform(-0.5, 0.5))
     if rng.random() < threshold_focus:
@@ -75,7 +91,8 @@ def run_case(args) -> dict:
     master, gt = render_master(spec)
     photo = degrade(master, deg, rng)
 
-    cfg = ScanConfig(marker=MarkerSpec(marker_length_mm=spec.marker_mm))
+    cfg = ScanConfig(marker=MarkerSpec(marker_length_mm=spec.marker_mm),
+                     panel_area_cm2=_panel_area_cm2(spec))
     try:
         rep = scan_image(photo, cfg)
     except Exception as e:                                   # never lose a case

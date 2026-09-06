@@ -123,15 +123,50 @@ def rebuild_lines(words: list[Word]) -> list[Line]:
     return lines
 
 
-def _preprocess(bgr: np.ndarray, scale: float) -> np.ndarray:
+def _preprocess(bgr: np.ndarray, scale: float, variant: str = "clahe"
+                ) -> np.ndarray:
+    """One grayscale rendering of the panel, up-sampled for recognition.
+
+    Every variant is produced at the SAME `scale`, which matters more than it
+    looks: word coordinates are divided by the scale to get back to the
+    rectified pixel grid, and that grid is the one with the known px/mm. If
+    two variants were up-sampled differently, merging their word boxes would
+    put an ROI in the wrong place and the glyph measurer would silently
+    measure whatever happened to be there.
+    """
     gray = cv2.cvtColor(bgr, cv2.COLOR_BGR2GRAY) if bgr.ndim == 3 else bgr
-    # CLAHE flattens the local contrast loss caused by glare and by a
-    # non-uniform light source across the panel.
-    gray = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8)).apply(gray)
+
+    if variant == "plain":
+        # No enhancement at all. On a clean, evenly-lit label CLAHE can amplify
+        # paper grain into speckle that breaks thin strokes, so the untouched
+        # image is kept in the sweep as its own candidate.
+        out = gray
+    elif variant == "invert":
+        # Reversed-out text - a white wordmark in a black box, white on a
+        # coloured band - is a hole in the mask for every dark-on-light
+        # assumption downstream. Tesseract itself expects dark on light, so
+        # the only way to read those declarations is to hand it the negative.
+        out = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8)).apply(gray)
+        out = cv2.bitwise_not(out)
+    elif variant == "sharp":
+        # Unsharp masking against the softening that phone denoise and JPEG
+        # both apply. It recovers small type that is present but smeared -
+        # which is the failure mode on a re-compressed messaging-app photo.
+        base = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8)).apply(gray)
+        blur = cv2.GaussianBlur(base, (0, 0), 1.2)
+        out = cv2.addWeighted(base, 1.7, blur, -0.7, 0)
+    else:  # "clahe"
+        # Flattens the local contrast loss caused by glare and by a
+        # non-uniform light source across the panel.
+        out = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8)).apply(gray)
+
     if scale != 1.0:
-        gray = cv2.resize(gray, None, fx=scale, fy=scale,
-                          interpolation=cv2.INTER_CUBIC)
-    return gray
+        out = cv2.resize(out, None, fx=scale, fy=scale,
+                         interpolation=cv2.INTER_CUBIC)
+    return out
+
+
+OCR_VARIANTS = ("clahe", "plain", "sharp", "invert")
 
 
 def content_crop(bgr: np.ndarray, pad: int = 24,
@@ -169,20 +204,36 @@ def offset_result(r: "OcrResult", ox: int, oy: int) -> "OcrResult":
     return r
 
 
+# Below this, up-sampling is not worth doing. Resampling the whole panel by a
+# few percent costs a round of cubic interpolation - which softens strokes and
+# shifts the noise pattern - and buys almost no extra detail, because the
+# detail was never in the file. Worse, it makes the result unstable: a frame
+# already near the target resolution would be resampled by 1.0075x or 1.0100x
+# depending on a 0.25% difference in the declared marker size, and those two
+# renderings are different enough that Tesseract ranks the preprocessing
+# variants differently and reads different text off the same label.
+SCALE_DEADBAND = 1.05
+
+
 def choose_scale(rect_px_per_mm: float, target_px_per_mm: float = 28.0,
                  cap: float = 5.0) -> float:
     if rect_px_per_mm <= 0:
         return 1.0
-    return float(np.clip(target_px_per_mm / rect_px_per_mm, 1.0, cap))
+    s = float(np.clip(target_px_per_mm / rect_px_per_mm, 1.0, cap))
+    return 1.0 if s < SCALE_DEADBAND else s
 
 
 def run_ocr(rect_bgr: np.ndarray, rect_px_per_mm: float = 0.0,
             lang: str = "eng", psm: int = 6,
-            scale: Optional[float] = None) -> OcrResult:
+            scale: Optional[float] = None,
+            variant: str = "clahe") -> OcrResult:
     """OCR a rectified image; all output coordinates are in rectified pixels."""
     s = scale if scale is not None else choose_scale(rect_px_per_mm)
-    img = _preprocess(rect_bgr, s)
-    cfg = f"--oem 3 --psm {psm}"
+    img = _preprocess(rect_bgr, s, variant)
+    # Tesseract collapses runs of spaces by default, which destroys the gap
+    # between a key and its value on a label laid out in columns
+    # ("Type of Ruling :        Single Line").
+    cfg = f"--oem 3 --psm {psm} -c preserve_interword_spaces=1"
 
     data = pytesseract.image_to_data(img, lang=lang, config=cfg,
                                      output_type=pytesseract.Output.DICT)
@@ -230,22 +281,161 @@ def run_ocr(rect_bgr: np.ndarray, rect_px_per_mm: float = 0.0,
                      mean_conf=float(np.mean(confs)) if confs else 0.0)
 
 
-def run_ocr_multi(rect_bgr: np.ndarray, rect_px_per_mm: float = 0.0,
-                  lang: str = "eng", psms: tuple[int, ...] = (6, 11)) -> OcrResult:
-    """Run several page-segmentation modes and keep the most productive one.
+# A pass is judged only on text it was actually sure of, and only on text long
+# enough to be a word. Both conditions are load-bearing.
+#
+# Scoring on raw word count makes an over-sharpened rendering "win":
+# sharpening a photo of a textured table top manufactures hundreds of one- and
+# two-character detections, which outnumber the real declarations. Raising the
+# confidence floor alone does not fix it, because sharpening also RAISES the
+# confidence of those fragments - it increases local contrast, which is most
+# of what the confidence estimate responds to. Requiring three characters is
+# what actually separates a word from a speck.
+#
+# Measured on two labels at two marginally different scales: at conf>=50 with
+# no length rule, the winner flipped to the sharpened pass on a 0.25% input
+# change and the declarations went from "302 Pages"/"170.00" to "1M"/"1". At
+# conf>=70 with a 3-character minimum the same four passes rank stably.
+SCORE_MIN_CONF = 70.0
+SCORE_MIN_CHARS = 3
+# Below this the fallback score is used: on a genuinely marginal frame no pass
+# clears conf 70 at all, and every score would be zero.
+FALLBACK_MIN_CONF = 50.0
+# A challenger must beat the incumbent by this much to displace it. Passes
+# often score within a point or two of each other, and without a margin the
+# choice - and with it the character boxes the measurement stage uses - turns
+# on noise.
+SCORE_MARGIN = 1.08
+# Words admitted from a NON-winning pass have to clear a higher bar still,
+# because they are being added on the strength of a single reading with
+# nothing to corroborate them.
+MERGE_MIN_CONF = 60.0
 
-    Real labels mix a dense ingredient block with sparse scattered
-    declarations; no single Tesseract PSM handles both well.
+
+def _score(r: "OcrResult", min_conf: float = SCORE_MIN_CONF) -> float:
+    """How much real text a pass produced that it was confident about."""
+    return float(sum(len(w.text) for l in r.lines for w in l.words
+                     if w.conf >= min_conf and len(w.text) >= SCORE_MIN_CHARS))
+
+
+def _iou(a: Word, b: Word) -> float:
+    ix0 = max(a.x, b.x); iy0 = max(a.y, b.y)
+    ix1 = min(a.x + a.w, b.x + b.w); iy1 = min(a.y + a.h, b.y + b.h)
+    if ix1 <= ix0 or iy1 <= iy0:
+        return 0.0
+    inter = (ix1 - ix0) * (iy1 - iy0)
+    union = a.w * a.h + b.w * b.h - inter
+    return inter / union if union > 0 else 0.0
+
+
+def _covered(w: Word, k: Word) -> float:
+    """Fraction of w's area that lies inside k."""
+    ix0 = max(w.x, k.x); iy0 = max(w.y, k.y)
+    ix1 = min(w.x + w.w, k.x + k.w); iy1 = min(w.y + w.h, k.y + k.h)
+    if ix1 <= ix0 or iy1 <= iy0:
+        return 0.0
+    return ((ix1 - ix0) * (iy1 - iy0)) / float(max(1, w.w * w.h))
+
+
+def _merge_words(primary: list[Word], extra: list[list[Word]],
+                 iou_thresh: float = 0.3,
+                 cover_thresh: float = 0.6) -> list[Word]:
+    """Add to the winning pass only what the others found that it missed.
+
+    This is deliberately additive rather than a symmetric union. The winning
+    pass is the one the rest of the pipeline was calibrated on, so it stays
+    authoritative over every box it claimed; the other passes contribute only
+    where they read confident text on ink the winner left blank - a wordmark
+    reversed out of a black box, a declaration marooned beside a barcode that
+    the block-layout mode ran together with its neighbour.
+
+    A symmetric union is the wrong shape here for a specific reason: when two
+    passes disagree about the same ink, "higher confidence wins" is a coin
+    flip between two readings of one word, and taking it per-word shreds a
+    line into alternating fragments from different passes. Overlap is tested
+    by IoU and, because passes often box the same word at different tightness,
+    also by simple containment.
     """
-    best: Optional[OcrResult] = None
-    best_score = -1.0
-    for psm in psms:
+    kept = list(primary)
+    for words in extra:
+        for w in words:
+            if w.conf < MERGE_MIN_CONF:
+                continue
+            if any(_iou(w, k) >= iou_thresh or _covered(w, k) >= cover_thresh
+                   for k in kept):
+                continue
+            kept.append(w)
+    return kept
+
+
+def run_ocr_multi(rect_bgr: np.ndarray, rect_px_per_mm: float = 0.0,
+                  lang: str = "eng", psms: tuple[int, ...] = (6, 11)
+                  ) -> OcrResult:
+    """Sweep preprocessing variants and page-segmentation modes, then MERGE.
+
+    Two independent things defeat a single OCR pass on a real label:
+
+      * Layout. A label mixes a dense address block with declarations
+        scattered around a barcode and a logo. Tesseract's PSM 6 assumes one
+        uniform block and runs unrelated columns together; PSM 11 finds the
+        scattered text but gives up on the block. Neither is right for the
+        whole panel.
+      * Rendering. Glare wants CLAHE, clean print is hurt by it, a
+        re-compressed photo wants sharpening, and a white-on-black wordmark
+        is invisible to all three until the image is inverted.
+
+    The old code ran a couple of PSMs and kept whichever scored highest,
+    which threw away everything the losing pass had found - including, on
+    this label, every reversed-out declaration. This version keeps the union.
+
+    Cost is contained by sweeping variants at one PSM first, then spending
+    the remaining PSMs only on the variant that won: 4 + 2 passes rather
+    than 4 x 3. Every pass shares one up-sampling scale, so all coordinates
+    land on the same rectified pixel grid and are safe to merge.
+    """
+    scale = choose_scale(rect_px_per_mm)
+    base_psm = psms[0] if psms else 6
+
+    results: list[tuple[str, OcrResult]] = []
+    for variant in OCR_VARIANTS:
         try:
-            r = run_ocr(rect_bgr, rect_px_per_mm, lang=lang, psm=psm)
+            results.append((variant, run_ocr(rect_bgr, rect_px_per_mm,
+                                             lang=lang, psm=base_psm,
+                                             scale=scale, variant=variant)))
         except Exception:
             continue
-        score = sum(len(w.text) for l in r.lines for w in l.words) * (
-            0.5 + r.mean_conf / 200.0)
-        if score > best_score:
-            best, best_score = r, score
-    return best or OcrResult([], [], "", 1.0)
+    if not results:
+        return OcrResult([], [], "", scale)
+
+    # Pick the primary pass deterministically: fixed order, and a challenger
+    # must clear SCORE_MARGIN to displace the incumbent.
+    scored = [(v, r, _score(r)) for v, r in results]
+    if all(sc == 0 for _, _, sc in scored):
+        scored = [(v, r, _score(r, FALLBACK_MIN_CONF)) for v, r in results]
+    best_variant, best, best_score = scored[0]
+    for v, r, sc in scored[1:]:
+        if sc > best_score * SCORE_MARGIN:
+            best_variant, best, best_score = v, r, sc
+
+    extra = [r for _, r in results if r is not best]
+    for psm in psms[1:]:
+        try:
+            extra.append(run_ocr(rect_bgr, rect_px_per_mm, lang=lang,
+                                 psm=psm, scale=scale, variant=best_variant))
+        except Exception:
+            continue
+
+    words = _merge_words(
+        [w for l in best.lines for w in l.words],
+        [[w for l in r.lines for w in l.words] for r in extra])
+    lines = rebuild_lines(words)
+    confs = [w.conf for w in words]
+
+    # Character boxes come from the single best pass, NOT from the union.
+    # The measurement stage cross-checks the number of glyphs it segments
+    # against the number of digits the RECOGNISER read, and that check is
+    # what separates a 0.037 mm sigma from a 0.241 mm one. Feeding it a
+    # digit-column mask drawn from passes other than the one that produced
+    # the text would break the correspondence the check depends on.
+    return OcrResult(lines, best.chars, "\n".join(l.text for l in lines),
+                     scale, mean_conf=float(np.mean(confs)) if confs else 0.0)

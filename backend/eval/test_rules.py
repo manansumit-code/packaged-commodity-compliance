@@ -6,8 +6,10 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from lmpc.fields import extract_fields
 from lmpc.ocr import Line, OcrResult, Word
-from lmpc.rules import (PrintStyle, Uncertainty, Verdict, parse_net_quantity,
-                        required_height_mm, verdict_for)
+from lmpc.rules import (PrintStyle, Uncertainty, Verdict,
+                        panel_area_cm2_cylindrical, panel_area_cm2_other,
+                        panel_area_cm2_rectangular, parse_net_quantity,
+                        required_height_mm, verdict_for, width_ratio_verdict)
 
 FAILED = []
 
@@ -22,34 +24,80 @@ def approx(name, got, want, tol=1e-9):
         FAILED.append(f"{name}: got {got!r}, want ~{want!r}")
 
 
-# ---- Rule 7 Table I boundaries (inclusive upper bounds) -------------------
-for text, want in [("200 g", 1.0), ("199 g", 1.0), ("201 g", 2.0),
-                   ("500 g", 2.0), ("501 g", 4.0), ("1 kg", 4.0),
-                   ("100 ml", 1.0), ("500 ml", 2.0), ("1 L", 4.0),
-                   ("2 x 100 g", 1.0), ("2 x 150 g", 2.0)]:
-    q = parse_net_quantity(text)
-    lk = required_height_mm("net_quantity", q, PrintStyle.NORMAL)
-    approx(f"TableI[{text}]", lk.required_mm, want)
+# ---- Rule 7 Table-I boundaries -------------------------------------------
+# As substituted by G.S.R. 629(E) of 23.6.2017: ONE table, keyed on the area
+# of the principal display panel in cm2, applying to every declaration.
+# The Act prints the rows as "A < 50", "50 < A < 100", ...; we read each row
+# as "up to and including" its upper bound.
+for area, want in [(10.0, 1.0), (49.9, 1.0), (50.0, 1.0),
+                   (50.1, 1.5), (100.0, 1.5),
+                   (100.1, 2.5), (500.0, 2.5),
+                   (500.1, 4.0), (2500.0, 4.0),
+                   (2500.1, 6.0), (10000.0, 6.0)]:
+    lk = required_height_mm("net_quantity", None, PrintStyle.NORMAL, area)
+    approx(f"TableI[{area} cm2]", lk.required_mm, want)
+    check(f"TableI[{area} cm2] names Table-I", lk.table, "I")
 
-# embossed column
-approx("TableI embossed 500g",
-       required_height_mm("net_quantity", parse_net_quantity("500 g"),
-                          PrintStyle.EMBOSSED).required_mm, 4.0)
+# the blown / formed / moulded column
+for area, want in [(10.0, 1.5), (75.0, 3.0), (250.0, 4.0),
+                   (1000.0, 6.0), (5000.0, 6.0)]:
+    approx(f"TableI moulded[{area} cm2]",
+           required_height_mm("net_quantity", None, PrintStyle.EMBOSSED,
+                              area).required_mm, want)
 
-# ---- Table II requires a panel area, and says so -------------------------
-q = parse_net_quantity("12 N")
-lk = required_height_mm("net_quantity", q, PrintStyle.NORMAL)
-check("TableII without area is refused", lk.ok, False)
-check("TableII names the table", lk.table, "II")
-lk = required_height_mm("net_quantity", q, PrintStyle.NORMAL, panel_area_cm2=250)
-approx("TableII 250cm2", lk.required_mm, 2.0)
-lk = required_height_mm("net_quantity", q, PrintStyle.NORMAL, panel_area_cm2=3000)
-approx("TableII 3000cm2", lk.required_mm, 6.0)
+# ---- the table is keyed on panel area, so it is refused without one ------
+# This is the whole point of the 2017 amendment: net quantity no longer
+# selects a row, so knowing "500 g" tells you nothing about the threshold.
+lk = required_height_mm("net_quantity", parse_net_quantity("500 g"),
+                        PrintStyle.NORMAL)
+check("Table-I without a panel area is refused", lk.ok, False)
+check("Table-I refusal names Table-I", lk.table, "I")
+check("Table-I refusal explains why",
+      "principal display panel" in lk.reason.lower(), True)
+lk = required_height_mm("net_quantity", parse_net_quantity("12 N"),
+                        PrintStyle.NORMAL)
+check("a count declaration is refused the same way", lk.ok, False)
 
-# ---- MRP: floor binds, table is advisory only ----------------------------
-lk = required_height_mm("mrp", parse_net_quantity("1 kg"), PrintStyle.NORMAL)
-approx("MRP binding = 7(3) floor", lk.required_mm, 1.0)
-approx("MRP advisory = Table I", lk.advisory_mm, 4.0)
+# ---- every declaration takes the same table -----------------------------
+# Rule 7(2) carves out no declaration, and Rule 7(5) names net weight, retail
+# sale price, expiry date and consumer care details expressly. The old build
+# held MRP and the manufacture date to a flat 1 mm floor that G.S.R. 629(E)
+# had already deleted; that under-enforced them by up to 5 mm.
+for field in ("net_quantity", "mrp", "mfg_date", "consumer_care",
+              "manufacturer"):
+    lk = required_height_mm(field, parse_net_quantity("1 kg"),
+                            PrintStyle.NORMAL, panel_area_cm2=623.7)
+    approx(f"{field} takes Table-I", lk.required_mm, 4.0)
+    check(f"{field} is not on the deleted floor", lk.table, "I")
+
+# the superseded reading is still disclosed, but never binds
+lk = required_height_mm("mrp", parse_net_quantity("1 kg"), PrintStyle.NORMAL,
+                        panel_area_cm2=250.0)
+approx("binding value is the amended table", lk.required_mm, 2.5)
+approx("pre-2017 reading is reported alongside", lk.advisory_mm, 4.0)
+check("pre-2017 reading is labelled as such",
+      "pre-2017" in (lk.advisory_table or ""), True)
+
+# ---- Rule 7(3): width not less than one third of height ------------------
+check("clearly wide enough passes", width_ratio_verdict(0.55, "185")[0],
+      Verdict.PASS.value)
+check("clearly too narrow fails", width_ratio_verdict(0.20, "185")[0],
+      Verdict.FAIL.value)
+check("near the one-third line is borderline",
+      width_ratio_verdict(0.33, "185")[0], Verdict.BORDERLINE.value)
+check("an all-exempt declaration is not adjudicated",
+      width_ratio_verdict(0.10, "111")[0], Verdict.NOT_ASSESSED.value)
+check("an unmeasured width is not adjudicated",
+      width_ratio_verdict(None, "185")[0], Verdict.NOT_ASSESSED.value)
+
+# ---- Rule 7(4): how the panel area is computed ---------------------------
+approx("7(4)(a) rectangular", panel_area_cm2_rectangular(29.7, 21.0), 623.7,
+       tol=1e-6)
+approx("7(4)(b) cylindrical is 40% of h x circumference",
+       panel_area_cm2_cylindrical(12.0, circumference_cm=25.0), 120.0,
+       tol=1e-6)
+approx("7(4)(c) other shapes are 40% of total surface",
+       panel_area_cm2_other(1000.0), 400.0, tol=1e-6)
 
 # ---- quantity parsing ----------------------------------------------------
 check("kg normalises", parse_net_quantity("Net Qty 1.5 kg").base_value, 1500.0)

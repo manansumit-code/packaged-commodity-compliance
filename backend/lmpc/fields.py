@@ -121,7 +121,23 @@ MFG_NEGATIVE = [r"BESTBEFORE", r"BESTBEFOREEND", r"USEBY", r"USEBEFORE",
                 r"BESTBEF", r"EXP\b"]
 MRP_NEGATIVE = [r"PER100G", r"PER100ML", r"PERKG", r"PERLITRE", r"PERUNIT",
                 r"PERPIECE", r"INTRODUCTORY", r"SPECIALPRICE", r"OFFERPRICE",
-                r"DISCOUNTEDPRICE", r"SAVE", r"WAS"]
+                r"DISCOUNTEDPRICE", r"SAVE", r"WAS",
+                # Legend-style labels (HUL and others) print the KEY in one
+                # place and the VALUE somewhere else: "*MRP Rs (INCL. OF ALL
+                # TAXES), USP, #MFD., B. NO. & @USE BEFORE: SEE BELOW." The
+                # number nearest that key is not the price - it is whatever
+                # digit the recogniser happened to find in the legend. On a
+                # Pond's jar this read the MRP as "7".
+                r"SEEBELOW", r"BELOW"]
+
+# Lines that carry a number and a unit but are NOT a net-quantity
+# declaration. "Size : 29.7 x 21 cm" is the dimensions of the article; read
+# as a quantity it yields "21 cm", which is wrong twice over - it is not the
+# net quantity, and it then anchors the Rule 7 height measurement onto the
+# wrong numerals, so a height verdict gets attached to a field the pack never
+# declared there.
+NETQTY_NEGATIVE = [r"SIZE", r"DIMENSION", r"DIMENSIONS", r"LENGTH",
+                   r"WIDTH", r"HEIGHT", r"THICKNESS", r"GSM"]
 
 
 def _negative_cut(norm: str, idx: list[int], start_norm: int,
@@ -147,6 +163,32 @@ def _negative_cut(norm: str, idx: list[int], start_norm: int,
 
 CURRENCY_RE = re.compile(r"(?:RS|INR|R5)\s*\.?\s*(?P<val>\d{1,6}(?:[.,]\d{1,2})?)",
                          re.IGNORECASE)
+
+# The rupee sign and what Tesseract turns it into. Observed on a Pond's jar
+# printed white-on-black: "AA* Rs 545/-" came back as "AA * = 545/" from one
+# frame and "AA &545/-" from another - the glyph survives as "=", "&" or "%".
+# These substitutes are far too weak to identify a price on their own, so
+# they are only ever used together with the "/-" terminator below.
+RUPEE_SIGNS = r"(?:RS|INR|R5|\u20b9|&|=|%|\?|\*)"
+
+# A price written the Indian retail way: "545/-", "Rs. 545/-", "Rs 545/=".
+# The trailing "/-" is what makes this safe to accept on a line carrying no
+# MRP key at all: an ingredient list or an address does not contain it.
+PRICE_SLASH_RE = re.compile(
+    RUPEE_SIGNS + r"?\s*\.?\s*(?P<val>\d{1,6}(?:[.,]\d{1,2})?)\s*/\s*[-=<>~_]")
+
+# A UNIT price - "Rs 2.73/ml", "49.80 per 100 g" - is not the retail sale
+# price and must never be reported as one. Same jar prints both, side by side.
+UNIT_PRICE_RE = re.compile(
+    r"\d\s*(?:[.,]\d+)?\s*(?:/|per)\s*\d{0,3}\s*"
+    r"(?:ml|mls|g|gm|gms|kg|kgs|l|ltr|litre|piece|pc|unit)\b", re.IGNORECASE)
+
+# Legend-style labels declare the KEY in one place and the VALUE in another:
+#   "*MRP Rs (INCL. OF ALL TAXES), USP, #MFD., B. NO. & @USE BEFORE: SEE BELOW."
+# with the actual figures on a band underneath. HUL uses this across its
+# range. Without following the pointer the pack reads as having no MRP at all.
+MRP_LEGEND_MARKERS = [r"SEEBELOW", r"BELOW", r"OVERLEAF"]
+MRP_LEGEND_LOOKAHEAD = 6
 SHORT_MFG_TOKENS = ("MFD", "MFG", "PKD", "MFDBY")
 
 
@@ -338,6 +380,81 @@ def extract_fields(ocr: OcrResult) -> dict[str, FieldHit]:
                 "Matched on a currency amount alone - no 'MRP' / 'Maximum "
                 "Retail Price' key phrase was recognised. Verify manually "
                 "that this is the retail sale price.", 0.45))
+    # ---- MRP: Indian "545/-" price notation ------------------------------
+    # Reached when no "MRP" key could be tied to a number. On a legend-style
+    # label the key sentence and the figure are printed apart, and OCR splits
+    # that sentence across lines besides, so the key is often not recoverable
+    # at all - three frames of one Pond's jar produced "WAP", '") B. B.NO."
+    # and one usable "MRP", never on the line carrying the price.
+    #
+    # The "/-" terminator carries the identification instead. It is specific
+    # to a rupee amount: an ingredient list, an address, a batch code and a
+    # phone number do not contain it, and a unit rate ends "/ml" rather than
+    # "/-". That is enough to report the figure, though not enough to be sure
+    # it is the RETAIL price rather than some other amount - hence a
+    # confidence that adjudicates but carries a verify-by-eye note.
+    if best is None:
+        for win in wins:
+            ln_norm = normalize_with_map(lines[win.i].text)[0]
+            if any(re.search(nk, ln_norm) for nk in MRP_NEGATIVE):
+                continue
+            txt = lines[win.i].text
+            m = PRICE_SLASH_RE.search(txt)
+            if not m or UNIT_PRICE_RE.search(m.group(0)):
+                continue
+            try:
+                val = float(m.group("val").replace(",", "."))
+            except ValueError:
+                continue
+            a, b = m.span("val")
+            best = better(best, FieldHit(
+                "mrp", True, True, txt, val, m.group("val"),
+                _boxes(lines[win.i].words_for_span(a, b)), lines[win.i].bbox,
+                "Read from an amount written as '" + m.group("val") +
+                "/-' with no 'MRP' key phrase attached to it - the label "
+                "prints the key and the figure apart. Confirm by eye that "
+                "this is the retail sale price.", 0.6))
+
+    # ---- MRP: legend layout, key here / value below ----------------------
+    if best is None or best.match_confidence < 0.5:
+        legend = [i for i, ln in enumerate(lines)
+                  for n in [normalize_with_map(ln.text)[0]]
+                  if any(re.search(k, n) for k in MRP_KEYS)
+                  and any(re.search(mk, n) for mk in MRP_LEGEND_MARKERS)]
+        for li in legend:
+            found = False
+            for j in range(li + 1, min(li + 1 + MRP_LEGEND_LOOKAHEAD,
+                                       len(lines))):
+                txt = lines[j].text
+                for m in PRICE_SLASH_RE.finditer(txt):
+                    # The "/-" terminator is what already excludes a unit
+                    # rate: "Rs 2.73/ml" ends in "/ml", not "/-", so it never
+                    # reaches here. This check is a backstop, and is applied
+                    # to the MATCH ONLY - widening it to the surrounding text
+                    # made the unit price printed further along the same line
+                    # ("545/-, Rs 2.73/ml") veto the real price.
+                    if UNIT_PRICE_RE.search(m.group(0)):
+                        continue
+                    try:
+                        val = float(m.group("val").replace(",", "."))
+                    except ValueError:
+                        continue
+                    a, b = m.span("val")
+                    best = better(best, FieldHit(
+                        "mrp", True, True, txt, val, m.group("val"),
+                        _boxes(lines[j].words_for_span(a, b)),
+                        lines[j].bbox,
+                        "Legend-style label: the 'MRP' key line points "
+                        "elsewhere ('see below'), so the price was read from "
+                        "the value band beneath it. Confirm by eye that this "
+                        "is the retail sale price and not a unit rate.", 0.75))
+                    found = True
+                    break
+                if found:
+                    break
+            if found:
+                break
+
     hits["mrp"] = best or FieldHit("mrp", False, True,
                                    note="No MRP / maximum retail price "
                                         "declaration found in the OCR text.")
@@ -350,6 +467,8 @@ def extract_fields(ocr: OcrResult) -> dict[str, FieldHit]:
         ln_norm = normalize_with_map(lines[win.i].text)[0]
         if not ok and any(re.search(nk, ln_norm) for nk in MRP_NEGATIVE):
             continue          # "Rs. 49.80 per 100 g" is a price, not a pack size
+        if not ok and any(re.search(nk, ln_norm) for nk in NETQTY_NEGATIVE):
+            continue          # "Size : 29.7 x 21 cm" is a dimension, not a qty
         search_text = win.text if ok else lines[win.i].text
         # OCR unit repair is only safe when a "Net Qty." key phrase anchored
         # the match; on unanchored text it would invent quantities.

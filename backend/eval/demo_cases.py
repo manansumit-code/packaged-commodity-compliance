@@ -35,10 +35,12 @@ def build(out_dir: str, seed: int = 20260904):
     os.makedirs(out_dir, exist_ok=True)
     rng = random.Random(seed)
     base = random_spec(rng)
-    base.qty_value, base.qty_unit = 500, "g"      # -> Rule 7 Table I, 2 mm
+    base.qty_value, base.qty_unit = 500, "g"      # panel 118 cm2 -> Table-I, 2.5 mm
     base.qty_key = "Net Qty."
+    panel_area_cm2 = (base.panel_w_mm * base.panel_h_mm) / 100.0
     req = required_height_mm(
-        "net_quantity", parse_net_quantity("500 g"), PrintStyle.NORMAL).required_mm
+        "net_quantity", parse_net_quantity("500 g"), PrintStyle.NORMAL,
+        panel_area_cm2).required_mm
 
     cases = [
         ("A_compliant", req + 1.6, "comfortably above the Rule 7 minimum"),
@@ -71,7 +73,8 @@ def main():
     a = ap.parse_args()
 
     cases = build(a.out)
-    cfg = ScanConfig(marker=MarkerSpec(marker_length_mm=40.0))
+    cfg = ScanConfig(marker=MarkerSpec(marker_length_mm=40.0),
+                     panel_area_cm2=panel_area_cm2)
     print(f"\n{'case':14s} {'printed':>9s} {'required':>9s} {'measured':>9s} "
           f"{'err':>7s}  verdict")
     print("-" * 74)

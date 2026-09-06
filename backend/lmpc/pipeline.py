@@ -13,6 +13,11 @@ answer instead of a number:
                         interpolating detail rather than recovering it
   INSUFFICIENT_RESOLUTION  the numeral is rendered on too few real sensor
                         pixels for the measurement to mean anything
+  PANEL_NOT_COPLANAR    the panel is on a grossly different plane from the
+                        marker, so the marker's scale does not apply
+
+A fourth, PANEL_TILT_PENALTY, does NOT withhold an answer: a mild plane
+mismatch widens the error band instead of voiding the measurement.
 
 Presence checking does NOT need scale, so a scan with no marker still returns
 a full Rule 6 presence report - only the height half is withheld.
@@ -23,7 +28,7 @@ import json
 import os
 import time
 import uuid
-from dataclasses import asdict, dataclass, field as dc_field
+from dataclasses import asdict, dataclass, field as dc_field, replace
 from typing import Any, Optional
 
 import numpy as np
@@ -33,7 +38,8 @@ from .fields import FieldHit, extract_fields, union_box
 from .measure import HeightMeasurement, measure_field_height
 from .ocr import OcrResult, content_crop, offset_result, run_ocr_multi
 from .rules import (MANDATORY_DECLARATIONS, PrintStyle, Uncertainty, Verdict,
-                    declaration_rule, required_height_mm, verdict_for)
+                    declaration_rule, required_height_mm, verdict_for,
+                    width_ratio_verdict)
 
 # Declarations whose numerals carry a Rule 7 height threshold and that we can
 # actually locate on the label. These are ADJUDICATED.
@@ -64,6 +70,9 @@ def load_uncertainty(path: str = UNCERTAINTY_PATH) -> Uncertainty:
                               ("bias_mm", "sigma_mm", "k", "min_px_per_mm",
                                "max_tilt_deg", "max_baseline_slope_deg",
                                "max_baseline_spread_deg",
+                               "hard_baseline_slope_deg",
+                               "hard_baseline_spread_deg",
+                               "coplanarity_mm_per_deg",
                                "source", "apply_bias_correction",
                                "band_override_mm") if k in d})
     except Exception:
@@ -156,9 +165,14 @@ def scan_image(bgr: np.ndarray, cfg: ScanConfig = None) -> dict:
                       "detail": "; ".join(legibility_reasons)})
 
     plan = _planarity(ocr, unc)
-    if metric_ok and plan["coplanar"] is False:
+    band_penalty = 0.0
+    if metric_ok and plan.get("severity") == "gross":
         metric_ok = False
         gates.append({"gate": "PANEL_NOT_COPLANAR", "blocking_height": True,
+                      "detail": plan["detail"]})
+    elif metric_ok and plan.get("severity") == "degraded":
+        band_penalty = plan.get("band_penalty_mm", 0.0)
+        gates.append({"gate": "PANEL_TILT_PENALTY", "blocking_height": False,
                       "detail": plan["detail"]})
 
     # ---- 4. measurement + adjudication -----------------------------------
@@ -191,7 +205,8 @@ def scan_image(bgr: np.ndarray, cfg: ScanConfig = None) -> dict:
         if hit.present and name in (MEASURED_FIELDS + INFORMATIONAL_FIELDS):
             entry["height"] = _assess_height(
                 work, cal, metric_ok, ocr, hit, name, qty, cfg, gates,
-                informational=name in INFORMATIONAL_FIELDS)
+                informational=name in INFORMATIONAL_FIELDS,
+                band_penalty_mm=band_penalty)
         declarations.append(entry)
 
     # ---- 5. roll-up -------------------------------------------------------
@@ -216,6 +231,15 @@ def scan_image(bgr: np.ndarray, cfg: ScanConfig = None) -> dict:
                 borderline.append(msg + " (within measurement error)")
             elif v == Verdict.NOT_ASSESSED.value:
                 unassessed.append(f"{d['field']}: {h.get('reason', '')}")
+
+            wv = h.get("width_verdict")
+            wmsg = (f"{d['field']}: glyph width is "
+                    f"{h.get('width_to_height_ratio')} of its height, below "
+                    f"the one third Rule 7(3) requires")
+            if wv == Verdict.FAIL.value:
+                fails.append(wmsg)
+            elif wv == Verdict.BORDERLINE.value:
+                borderline.append(wmsg + " (within measurement error)")
 
     if fails:
         overall = "NON_COMPLIANT"
@@ -322,19 +346,46 @@ def _planarity(ocr, unc):
     # things - a uniform lean versus disagreement between lines - and tying
     # the second to a multiple of the first made the spread test fire on
     # perfectly coplanar frames.
-    bad = (abs(med) > unc.max_baseline_slope_deg
-           or spread > unc.max_baseline_spread_deg)
+    # Three states, not two. The statistic is a WEAK indicator - eval/
+    # test_coplanarity.py measured its null distribution overlapping the
+    # signal - so treating "above the clean threshold" as proof of a plane
+    # mismatch discards good captures. It is used instead to say how much
+    # LESS the reading should be trusted, and only a gross excursion refuses
+    # the scale outright.
+    slope_excess = max(0.0, abs(med) - unc.max_baseline_slope_deg)
+    spread_excess = max(0.0, spread - unc.max_baseline_spread_deg)
+    gross = (abs(med) > unc.hard_baseline_slope_deg
+             or spread > unc.hard_baseline_spread_deg)
+    degraded = (not gross) and (slope_excess > 0 or spread_excess > 0)
+    penalty = round(unc.coplanarity_mm_per_deg
+                    * (slope_excess + 0.25 * spread_excess), 4) if degraded else 0.0
+
+    severity = "gross" if gross else ("degraded" if degraded else "ok")
+    if gross:
+        detail = (f"Rectified text baselines slope {med:+.2f} deg (spread "
+                  f"{spread:.2f} deg) instead of lying flat, past the "
+                  f"{unc.hard_baseline_slope_deg:g} deg limit. The declaration "
+                  f"panel is NOT coplanar with the reference marker, which "
+                  f"makes the px/mm ratio wrong for the panel. Lay the marker "
+                  f"card flat against the same face as the printing.")
+    elif degraded:
+        detail = (f"Rectified text baselines slope {med:+.2f} deg (spread "
+                  f"{spread:.2f} deg), above the {unc.max_baseline_slope_deg:g} "
+                  f"deg clean threshold but well inside the "
+                  f"{unc.hard_baseline_slope_deg:g} deg limit. Heights are "
+                  f"still measured; the error band is widened by "
+                  f"{penalty:.3f} mm to cover the residual plane mismatch.")
+    else:
+        detail = ""
     return {
         "n_baselines": len(sl),
         "median_slope_deg": round(med, 3),
         "slope_spread_deg": round(spread, 3),
-        "coplanar": not bad,
-        "detail": ("" if not bad else
-                   f"Rectified text baselines slope {med:+.2f} deg (spread "
-                   f"{spread:.2f} deg) instead of lying flat. The declaration "
-                   f"panel is probably NOT coplanar with the reference marker, "
-                   f"which makes the px/mm ratio wrong for the panel. Lay the "
-                   f"marker card flat against the same face as the printing."),
+        "severity": severity,
+        "band_penalty_mm": penalty,
+        # kept for backwards compatibility: False now means GROSS only
+        "coplanar": not gross,
+        "detail": detail,
     }
 
 
@@ -385,8 +436,9 @@ _NO_SCALE_REASON = {
 
 
 def _assess_height(work, cal, metric_ok, ocr, hit, name, qty, cfg, gates,
-                   informational: bool = False) -> dict:
-    unc = cfg.uncertainty
+                   informational: bool = False,
+                   band_penalty_mm: float = 0.0) -> dict:
+    unc = replace(cfg.uncertainty, extra_band_mm=band_penalty_mm)
     lk = required_height_mm(name, qty, cfg.print_style, cfg.panel_area_cm2)
     out: dict[str, Any] = {
         "informational": informational,
@@ -459,12 +511,9 @@ def _assess_height(work, cal, metric_ok, ocr, hit, name, qty, cfg, gates,
     # kept as a deliberately conservative one, because those samples are few
     # (30 and 13) and a legal verdict should not rest on a thin tail estimate.
     inflate = {1: 1.5, 2: 1.5}.get(m.n_glyphs, 1.0)
-    eff = Uncertainty(
-        unc.bias_mm, unc.sigma_mm * inflate, unc.k, unc.min_px_per_mm,
-        unc.max_tilt_deg, unc.max_baseline_slope_deg,
-        unc.max_baseline_spread_deg, unc.source, unc.apply_bias_correction,
-        None if unc.band_override_mm is None
-        else unc.band_override_mm * inflate)
+    eff = replace(unc, sigma_mm=unc.sigma_mm * inflate,
+                  band_override_mm=None if unc.band_override_mm is None
+                  else unc.band_override_mm * inflate)
     verdict, band = verdict_for(m.height_mm, lk.required_mm, eff)
 
     # Segmentation must agree with recognition about how many numerals are
@@ -516,6 +565,19 @@ def _assess_height(work, cal, metric_ok, ocr, hit, name, qty, cfg, gates,
     if m.median_width_mm and m.height_mm:
         ratio = m.median_width_mm / m.height_mm
         out["width_to_height_ratio"] = round(ratio, 3)
+        # Rule 7(3) is now adjudicated, not merely observed: after G.S.R.
+        # 629(E) the width proviso is the entire operative content of that
+        # sub-rule. A glyph can clear its height and still be unlawfully
+        # condensed, and that is a defect nothing else in this report catches.
+        wv, wnote = width_ratio_verdict(ratio, hit.value_text or "")
+        out["width_verdict"] = wv
+        out["width_rule"] = "Rule 7(3) (width >= 1/3 height)"
+        if wnote:
+            out["width_reason"] = wnote
+    else:
+        out["width_verdict"] = Verdict.NOT_ASSESSED.value
+        out["width_reason"] = ("Glyph width was not measured, so the Rule 7(3) "
+                               "width proviso could not be checked.")
     return out
 
 

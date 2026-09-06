@@ -19,7 +19,8 @@ from .calibration import MarkerSpec, generate_marker
 from .pipeline import SCOPE_STATEMENT, ScanConfig, load_uncertainty, scan_image
 from .report import render_text
 from .rules import (DECLARATION_HEIGHT_RULES, MANDATORY_DECLARATIONS,
-                    RULE7_GENERAL_FLOOR_MM, RULE7_TABLE_I, RULE7_TABLE_II,
+                    RULE7_3_PRE2017_LETTER_FLOOR_MM, RULE7_3_MIN_WIDTH_RATIO,
+                    RULE7_TABLE_I, RULE7_TABLE_I_PRE2017, RULE7_TABLE_II_PRE2017,
                     PrintStyle)
 
 app = FastAPI(title="Packaged Commodity Compliance Scanner",
@@ -113,13 +114,23 @@ def rules():
     """Full disclosure of every legal threshold the system applies."""
     return {
         "source": "Legal Metrology (Packaged Commodities) Rules, 2011",
-        "rule_7_table_I_weight_or_volume": [
-            {"upper_bound_g_or_ml": u, "normal_mm": n, "embossed_mm": e}
+        "amendment_applied": "G.S.R. 629(E) dated 23.6.2017 (w.e.f. 7.3.2011) "
+                             "substituted Rule 7(2) and Rule 7(3).",
+        "rule_7_table_I_panel_area": [
+            {"upper_bound_panel_area_cm2": u, "normal_mm": n, "moulded_mm": e}
             for u, n, e in RULE7_TABLE_I],
-        "rule_7_table_II_length_area_number": [
-            {"upper_bound_panel_area_cm2": u, "normal_mm": n, "embossed_mm": e}
-            for u, n, e in RULE7_TABLE_II],
-        "rule_7_3_general_floor_mm": RULE7_GENERAL_FLOOR_MM,
+        "rule_7_3_width_to_height_min_ratio": RULE7_3_MIN_WIDTH_RATIO,
+        "superseded_pre_2017": {
+            "note": "Reproduced in the SIH26034 build plan. Reported as an "
+                    "advisory second reading only; never adjudicated.",
+            "table_I_weight_or_volume": [
+                {"upper_bound_g_or_ml": u, "normal_mm": n, "embossed_mm": e}
+                for u, n, e in RULE7_TABLE_I_PRE2017],
+            "table_II_length_area_number": [
+                {"upper_bound_panel_area_cm2": u, "normal_mm": n,
+                 "embossed_mm": e} for u, n, e in RULE7_TABLE_II_PRE2017],
+            "rule_7_3_letter_floor_mm": RULE7_3_PRE2017_LETTER_FLOOR_MM,
+        },
         "rule_6_mandatory_declarations": [
             {"field": f, "requirement": h} for f, h in MANDATORY_DECLARATIONS],
         "threshold_attachment": {

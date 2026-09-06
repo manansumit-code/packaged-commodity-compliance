@@ -136,9 +136,15 @@ def combine(reports: list[dict], names: list[str]) -> dict:
             d["presence_verdict"] = Verdict.PASS.value
 
         # ---- height: median across frames that produced one ---------------
-        h0 = d.get("height")
-        if h0:
-            hs = [dd.get("height") or {} for dd in rows]
+        # Driven by what ANY frame measured, never by whether the base frame
+        # happened to. Keying off the base frame silently discarded fields the
+        # other frames DID measure: on a GoodWrite notebook the sharpest frame
+        # missed the MRP entirely, so a price two other frames had measured at
+        # 2.77 and 2.66 mm vanished from the merged report. Coverage across
+        # frames is the main thing multi-frame buys; dropping it defeats the
+        # feature.
+        hs = [dd.get("height") or {} for dd in rows]
+        if any(h.get("measured_mm") or h.get("required_mm") for h in hs):
             good = [h for h in hs
                     if h.get("measured_mm") and h.get("verdict") in _ADJUDICATED]
             weak = [h for h in hs if h.get("measured_mm")]

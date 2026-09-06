@@ -230,6 +230,17 @@ _UNIT_TO_BASE = {
     "leaf": ("count", 1.0), "leaves": ("count", 1.0),
 }
 
+# The reverse word order some stationery labels use: "PAGES : 92",
+# "SHEETS - 200". Restricted to COUNT units on purpose - allowing it for mass
+# or volume would turn "NET WT : 500" style fragments, and worse any
+# "<word> : <number>" pair, into quantities. A count unit spelled out in full
+# before a colon is specific enough to be safe.
+_QTY_RE_REVERSED = re.compile(
+    r"\b(?P<unit>pages|page|sheets|sheet|leaves|leaf|pieces|pcs|units)\b"
+    r"\s*[:\-]?\s*(?P<value>\d{1,6})\b",
+    re.IGNORECASE,
+)
+
 # "2 x 100 g", "500g", "1.5 L", "250 ml", "10 N"
 _QTY_RE = re.compile(
     r"(?:(?P<mult>\d{1,3})\s*(?:x|X|×)\s*)?"
@@ -294,6 +305,17 @@ def parse_net_quantity(text: str,
         if best is None or (best.kind is not QuantityKind.WEIGHT_VOLUME
                             and cand.kind is QuantityKind.WEIGHT_VOLUME):
             best = cand
+    if best is None:
+        # Try the reversed word order before falling back to unit repair.
+        for m in _QTY_RE_REVERSED.finditer(text):
+            unit_raw = m.group("unit").lower()
+            base_unit, factor = _UNIT_TO_BASE[unit_raw]
+            value = float(m.group("value"))
+            best = NetQuantity(m.group(0).strip(), value, unit_raw, 1,
+                               value * factor, base_unit,
+                               QuantityKind.LENGTH_AREA_NUMBER)
+            break
+
     if best is not None or not allow_ocr_confusions:
         return best
 
